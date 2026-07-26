@@ -78,7 +78,11 @@ jobs:
   # ---------------------------------------------------------------------------
   windows:
     name: Application Windows (.exe)
-    runs-on: windows-latest
+    # Image épinglée : Flutter 3.24 reconnaît Visual Studio 2022, mais pas les
+    # versions plus récentes livrées sur windows-latest (la compilation échoue
+    # alors sur « Generator Visual Studio 16 2019 could not find any instance
+    # of Visual Studio »).
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 

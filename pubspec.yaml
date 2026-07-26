@@ -56,6 +56,18 @@ dependencies:
   # Fenêtre desktop
   window_manager: ^0.4.2
 
+# Verrouillage de compatibilité avec Flutter 3.24 (voir FLUTTER_VERSION dans
+# .github/workflows/build.yml).
+#
+# `app_links` est une dépendance indirecte de supabase_flutter. À partir de la
+# version 6.4.0, son fichier Gradle utilise `flutter.compileSdkVersion`, une
+# propriété injectée seulement par les versions plus récentes de l'outil
+# Flutter ; la compilation Android échoue alors avec
+# « Could not get unknown property 'flutter' ». La 6.3.3 fonctionne avec
+# Flutter 3.24 et expose la même API.
+dependency_overrides:
+  app_links: 6.3.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
