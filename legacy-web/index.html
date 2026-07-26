@@ -1,0 +1,1370 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Budget — Gestion financière personnelle</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FAFAFA; --card:#FFFFFF; --border:#E5E5E7; --text:#0A0A0B; --muted:#71717A;
+    --primary:#6366F1; --success:#10B981; --danger:#EF4444; --warning:#F59E0B;
+  }
+  .dark{
+    --bg:#0A0A0B; --card:#141416; --border:#26262A; --text:#F5F5F7; --muted:#A1A1AA;
+    --primary:#818CF8; --success:#34D399; --danger:#F87171; --warning:#FBBF24;
+  }
+  body{ background:var(--bg); color:var(--text); font-family:'Inter',system-ui,sans-serif; transition:background .25s ease, color .25s ease; }
+  .mono{ font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:16px; }
+  .btn{ border-radius:12px; padding:.5rem 1rem; font-weight:500; font-size:.875rem; transition:all .15s ease; cursor:pointer; border:none; }
+  .btn-primary{ background:var(--primary); color:#fff; }
+  .btn-primary:hover{ opacity:.9; transform: translateY(-1px); }
+  .btn-outline{ background:transparent; border:1px solid var(--border); color:var(--text); }
+  .btn-outline:hover{ background:var(--border); }
+  .input, select, textarea{
+    width:100%; border:1px solid var(--border); background:var(--bg); color:var(--text);
+    border-radius:12px; padding:.55rem .75rem; font-size:.875rem; outline:none;
+  }
+  .input:focus, select:focus, textarea:focus{ border-color:var(--primary); }
+  .nav-item{ display:flex; align-items:center; gap:.6rem; padding:.55rem .75rem; border-radius:12px; font-size:.875rem; color:var(--muted); cursor:pointer; transition:all .15s ease; }
+  .nav-item:hover{ background:var(--border); color:var(--text); }
+  .nav-item.active{ background:var(--primary); color:#fff; }
+  .fade-in{ animation: fadeIn .25s ease-out; }
+  @keyframes fadeIn{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+  .modal-backdrop{ background:rgba(0,0,0,.5); backdrop-filter: blur(4px); }
+  .progress-track{ height:8px; border-radius:999px; background:var(--border); overflow:hidden; }
+  .progress-bar{ height:100%; border-radius:999px; transition: width .4s cubic-bezier(.16,1,.3,1); }
+  ::-webkit-scrollbar{ width:8px; } ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:8px; }
+  .row-hover:hover{ background: var(--bg); }
+
+  /* ---- Agenda ---- */
+  .subtab{ padding:.4rem .8rem; border-radius:10px; font-size:.8rem; font-weight:500; color:var(--muted); cursor:pointer; transition:all .15s ease; white-space:nowrap; }
+  .subtab:hover{ background:var(--border); color:var(--text); }
+  .subtab.active{ background:var(--primary); color:#fff; }
+  .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+  .cal-day{ min-height:92px; border-radius:12px; border:1px solid var(--border); padding:6px; cursor:pointer; transition:all .15s ease; display:flex; flex-direction:column; gap:3px; }
+  .cal-day:hover{ border-color:var(--primary); }
+  .cal-day.today{ background: color-mix(in srgb, var(--primary) 10%, transparent); border-color:var(--primary); }
+  .cal-day.other-month{ opacity:.35; }
+  .cal-chip{ font-size:.65rem; padding:1px 6px; border-radius:6px; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .insight-card{ background:linear-gradient(135deg, color-mix(in srgb, var(--primary) 12%, transparent), transparent); border:1px solid var(--border); border-radius:16px; }
+  .priority-dot{ height:8px; width:8px; border-radius:999px; display:inline-block; }
+</style>
+</head>
+<body>
+
+<div class="flex min-h-screen">
+  <!-- SIDEBAR -->
+  <aside class="hidden md:flex w-60 shrink-0 flex-col p-4 border-r" style="border-color:var(--border)">
+    <div class="flex items-center justify-between px-2 mb-6">
+      <span class="text-lg font-semibold">💰 Budget</span>
+      <button onclick="toggleTheme()" class="btn btn-outline !p-2" title="Changer de thème">
+        <span id="themeIcon">🌙</span>
+      </button>
+    </div>
+    <nav id="nav" class="space-y-1"></nav>
+    <div class="mt-auto pt-4 text-xs" style="color:var(--muted)">
+      Données sauvegardées localement<br>dans ce navigateur.
+    </div>
+  </aside>
+
+  <!-- MOBILE NAV -->
+  <div class="md:hidden fixed bottom-0 left-0 right-0 z-40 card !rounded-none border-t flex justify-around py-2" style="border-color:var(--border)">
+    <div id="navMobile" class="flex w-full justify-around"></div>
+  </div>
+
+  <!-- BOUTON D'AJOUT RAPIDE (mobile) -->
+  <button onclick="openQuickAddMenu()" class="md:hidden fixed right-4 bottom-20 z-40 h-14 w-14 rounded-full btn-primary text-2xl shadow-lg flex items-center justify-center">+</button>
+
+  <!-- MAIN -->
+  <main class="flex-1 overflow-y-auto pb-20 md:pb-0">
+    <div id="app" class="p-4 md:p-8 max-w-6xl mx-auto"></div>
+  </main>
+</div>
+
+<!-- MODAL CONTAINER -->
+<div id="modalRoot"></div>
+
+<script>
+/* ============================================================
+   ÉTAT & PERSISTANCE (localStorage)
+   ============================================================ */
+const STORAGE_KEY = 'budget_app_data_v1';
+
+function defaultData(){
+  const cats = [
+    ['Maison','expense','#6366F1'], ['Restaurant','expense','#F59E0B'], ['Épicerie','expense','#10B981'],
+    ['Transport','expense','#0EA5E9'], ['Essence','expense','#EF4444'], ['Loisirs','expense','#A855F7'],
+    ['Santé','expense','#EC4899'], ['Études','expense','#14B8A6'], ['Vêtements','expense','#F97316'],
+    ['Salaire','income','#22C55E'], ['Investissement','income','#3B82F6'], ['Autres','expense','#94A3B8'],
+  ];
+  return {
+    theme: 'light',
+    accounts: [
+      { id: uid(), name: 'Compte courant', balance: 0 },
+      { id: uid(), name: 'Investissements', balance: 0 },
+    ],
+    categories: cats.map(([name,type,color]) => ({ id: uid(), name, type, color, isSystem: true })),
+    transactions: [],
+    budgets: [],
+    bills: [],
+    investmentSettings: { enabled: false, percent: 50 },
+    investmentHistory: [],
+    agendaCategories: [
+      { id: uid(), name: 'Personnel', icon: '📅', color: '#6366F1' },
+      { id: uid(), name: 'Travail', icon: '💼', color: '#0EA5E9' },
+      { id: uid(), name: 'Études', icon: '🎓', color: '#14B8A6' },
+      { id: uid(), name: 'Sport', icon: '🏈', color: '#F59E0B' },
+      { id: uid(), name: 'Finance', icon: '💰', color: '#10B981' },
+      { id: uid(), name: 'Maison', icon: '🏠', color: '#A855F7' },
+      { id: uid(), name: 'Transport', icon: '🚗', color: '#EF4444' },
+      { id: uid(), name: 'Objectifs', icon: '🎯', color: '#EC4899' },
+    ],
+    events: [], // {id,title,description,date,startTime,endTime,location,color,agendaCategoryId,recurrence:{freq}}
+    tasks: [],  // {id,title,priority,dueDate,reminderDays,done}
+    goals: [],  // {id,name,targetAmount,currentAmount,deadline}
+    lastNotifiedDate: null,
+  };
+}
+
+/** Ajoute les champs manquants sans écraser les données existantes (mise à jour de version). */
+function mergeDefaults(data){
+  const d = defaultData();
+  for(const key of Object.keys(d)){
+    if(!(key in data)) data[key] = d[key];
+  }
+  return data;
+}
+
+function uid(){ return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
+
+function loadData(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return defaultData();
+    return mergeDefaults(JSON.parse(raw));
+  }catch(e){ return defaultData(); }
+}
+function saveData(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+let state = loadData();
+let currentView = 'dashboard';
+let editingTx = null, editingBudget = null;
+
+/* ============================================================
+   UTILITAIRES
+   ============================================================ */
+function money(n){
+  return new Intl.NumberFormat('fr-CA', { style:'currency', currency:'CAD' }).format(n || 0);
+}
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function monthRange(ref = new Date()){
+  const start = new Date(ref.getFullYear(), ref.getMonth(), 1);
+  const end = new Date(ref.getFullYear(), ref.getMonth()+1, 1);
+  return { start: start.toISOString().slice(0,10), end: end.toISOString().slice(0,10) };
+}
+function catById(id){ return state.categories.find(c => c.id === id); }
+function accById(id){ return state.accounts.find(a => a.id === id); }
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+function toast(msg, isError=false){
+  const el = document.createElement('div');
+  el.className = 'fixed top-4 right-4 z-50 fade-in card px-4 py-3 text-sm shadow-lg';
+  el.style.borderColor = isError ? 'var(--danger)' : 'var(--success)';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2500);
+}
+
+/* ============================================================
+   THÈME
+   ============================================================ */
+function toggleTheme(){
+  state.theme = state.theme === 'dark' ? 'light' : 'dark';
+  applyTheme(); saveData();
+}
+function applyTheme(){
+  document.documentElement.classList.toggle('dark', state.theme === 'dark');
+  const icon = document.getElementById('themeIcon');
+  if(icon) icon.textContent = state.theme === 'dark' ? '☀️' : '🌙';
+}
+
+/* ============================================================
+   NAVIGATION
+   ============================================================ */
+const NAV_ITEMS = [
+  { id: 'dashboard', label: 'Tableau de bord', icon: '📊' },
+  { id: 'agenda', label: 'Agenda', icon: '🗓️' },
+  { id: 'transactions', label: 'Transactions', icon: '↔️' },
+  { id: 'budgets', label: 'Budgets', icon: '🐷' },
+  { id: 'bills', label: 'Factures', icon: '🧾' },
+  { id: 'investments', label: 'Investissements', icon: '📈' },
+  { id: 'categories', label: 'Catégories', icon: '🏷️' },
+];
+
+function renderNav(){
+  document.getElementById('nav').innerHTML = NAV_ITEMS.map(item => `
+    <div class="nav-item ${currentView === item.id ? 'active' : ''}" onclick="setView('${item.id}')">
+      <span>${item.icon}</span><span>${item.label}</span>
+    </div>`).join('');
+  document.getElementById('navMobile').innerHTML = NAV_ITEMS.map(item => `
+    <div onclick="setView('${item.id}')" class="text-xl ${currentView === item.id ? 'opacity-100' : 'opacity-40'}">${item.icon}</div>
+  `).join('');
+}
+function setView(view){ currentView = view; render(); }
+
+/* ============================================================
+   RENDU PRINCIPAL
+   ============================================================ */
+function render(){
+  renderNav();
+  const app = document.getElementById('app');
+  app.classList.remove('fade-in'); void app.offsetWidth; app.classList.add('fade-in');
+  if(currentView === 'dashboard') app.innerHTML = renderDashboard();
+  if(currentView === 'agenda') app.innerHTML = renderAgenda();
+  if(currentView === 'transactions') app.innerHTML = renderTransactions();
+  if(currentView === 'budgets') app.innerHTML = renderBudgets();
+  if(currentView === 'bills') app.innerHTML = renderBills();
+  if(currentView === 'investments') app.innerHTML = renderInvestments();
+  if(currentView === 'categories') app.innerHTML = renderCategories();
+  requestAnimationFrame(renderCharts);
+  maybeSendNotifications();
+}
+
+/* ============================================================
+   TABLEAU DE BORD
+   ============================================================ */
+function renderDashboard(){
+  const { start, end } = monthRange();
+  const monthTx = state.transactions.filter(t => t.date >= start && t.date < end);
+  const income = monthTx.filter(t => t.type === 'income').reduce((s,t) => s + t.amount, 0);
+  const expenses = monthTx.filter(t => t.type === 'expense').reduce((s,t) => s + t.amount, 0);
+  const balance = state.accounts.reduce((s,a) => s + a.balance, 0);
+  const remaining = income - expenses;
+  const pct = state.investmentSettings.enabled ? state.investmentSettings.percent : 0;
+  const planned = remaining > 0 ? remaining * pct / 100 : 0;
+
+  const cards = [
+    ['Solde actuel', balance, 'var(--text)'],
+    ['Revenus du mois', income, 'var(--success)'],
+    ['Dépenses du mois', expenses, 'var(--danger)'],
+    ['Argent restant', remaining, remaining >= 0 ? 'var(--success)' : 'var(--danger)'],
+    ['Prévu pour investir', planned, 'var(--primary)'],
+  ];
+
+  return `
+    <h1 class="text-2xl font-semibold mb-1">Tableau de bord</h1>
+    <p class="text-sm mb-6" style="color:var(--muted)">Vue d'ensemble de tes finances ce mois-ci.</p>
+
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+      ${cards.map(([label, val, color]) => `
+        <div class="card p-4">
+          <p class="text-xs mb-1" style="color:var(--muted)">${label}</p>
+          <p class="mono text-lg font-semibold" style="color:${color}">${money(val)}</p>
+        </div>`).join('')}
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6 mb-6">
+      <div class="card p-4">
+        <p class="text-sm font-semibold mb-3">Dépenses par catégorie</p>
+        <canvas id="chartCategory" height="220"></canvas>
+      </div>
+      <div class="card p-4">
+        <p class="text-sm font-semibold mb-3">Revenus vs dépenses (6 derniers mois)</p>
+        <canvas id="chartIncomeExpense" height="220"></canvas>
+      </div>
+    </div>
+
+    <div class="card p-4">
+      <p class="text-sm font-semibold mb-3">Évolution du solde</p>
+      <canvas id="chartTrend" height="100"></canvas>
+    </div>
+  `;
+}
+
+let chartInstances = {};
+function destroyChart(id){ if(chartInstances[id]){ chartInstances[id].destroy(); delete chartInstances[id]; } }
+
+function renderCharts(){
+  if(currentView !== 'dashboard') return;
+  const { start, end } = monthRange();
+  const monthTx = state.transactions.filter(t => t.date >= start && t.date < end);
+
+  // Dépenses par catégorie
+  const byCat = {};
+  monthTx.filter(t => t.type === 'expense').forEach(t => {
+    const c = catById(t.categoryId);
+    const name = c ? c.name : 'Autres';
+    byCat[name] = byCat[name] || { amount: 0, color: c ? c.color : '#94A3B8' };
+    byCat[name].amount += t.amount;
+  });
+  const catLabels = Object.keys(byCat);
+  const catEl = document.getElementById('chartCategory');
+  if(catEl){
+    destroyChart('cat');
+    chartInstances['cat'] = new Chart(catEl, {
+      type: 'doughnut',
+      data: { labels: catLabels, datasets: [{ data: catLabels.map(l => byCat[l].amount), backgroundColor: catLabels.map(l => byCat[l].color), borderWidth: 0 }] },
+      options: { plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } }, cutout: '65%' }
+    });
+  }
+
+  // Revenus vs dépenses, 6 derniers mois
+  const months = [];
+  for(let i=5;i>=0;i--){
+    const d = new Date(); d.setMonth(d.getMonth()-i);
+    months.push(d);
+  }
+  const incomeData = [], expenseData = [], trendLabels = [];
+  let running = 0; const trendData = [];
+  months.forEach(m => {
+    const { start: s, end: e } = monthRange(m);
+    const tx = state.transactions.filter(t => t.date >= s && t.date < e);
+    const inc = tx.filter(t => t.type === 'income').reduce((sum,t) => sum + t.amount, 0);
+    const exp = tx.filter(t => t.type === 'expense').reduce((sum,t) => sum + t.amount, 0);
+    incomeData.push(inc); expenseData.push(exp);
+    trendLabels.push(m.toLocaleDateString('fr-CA', { month: 'short' }));
+    running += inc - exp; trendData.push(running);
+  });
+
+  const ieEl = document.getElementById('chartIncomeExpense');
+  if(ieEl){
+    destroyChart('ie');
+    chartInstances['ie'] = new Chart(ieEl, {
+      type: 'bar',
+      data: { labels: trendLabels, datasets: [
+        { label: 'Revenus', data: incomeData, backgroundColor: '#10B981', borderRadius: 6 },
+        { label: 'Dépenses', data: expenseData, backgroundColor: '#EF4444', borderRadius: 6 },
+      ]},
+      options: { plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }
+    });
+  }
+
+  const trendEl = document.getElementById('chartTrend');
+  if(trendEl){
+    destroyChart('trend');
+    chartInstances['trend'] = new Chart(trendEl, {
+      type: 'line',
+      data: { labels: trendLabels, datasets: [{ label: 'Solde cumulé', data: trendData, borderColor: '#6366F1', backgroundColor: 'rgba(99,102,241,.15)', fill: true, tension: .35 }] },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: false } } }
+    });
+  }
+}
+
+/* ============================================================
+   TRANSACTIONS
+   ============================================================ */
+let txFilters = { search: '', type: '', categoryId: '', accountId: '' };
+
+function renderTransactions(){
+  const filtered = state.transactions
+    .filter(t => !txFilters.search || (t.description||'').toLowerCase().includes(txFilters.search.toLowerCase()))
+    .filter(t => !txFilters.type || t.type === txFilters.type)
+    .filter(t => !txFilters.categoryId || t.categoryId === txFilters.categoryId)
+    .filter(t => !txFilters.accountId || t.accountId === txFilters.accountId)
+    .sort((a,b) => b.date.localeCompare(a.date));
+
+  return `
+    <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+      <div>
+        <h1 class="text-2xl font-semibold">Transactions</h1>
+        <p class="text-sm" style="color:var(--muted)">Toutes tes dépenses et revenus.</p>
+      </div>
+      <button class="btn btn-primary" onclick="openTxModal()">+ Ajouter</button>
+    </div>
+
+    <div class="flex flex-col md:flex-row gap-3 mb-4">
+      <input class="input" placeholder="Rechercher..." value="${escapeHtml(txFilters.search)}" oninput="txFilters.search=this.value; render()">
+      <select class="input md:w-40" onchange="txFilters.type=this.value; render()">
+        <option value="">Tous les types</option>
+        <option value="income" ${txFilters.type==='income'?'selected':''}>Revenus</option>
+        <option value="expense" ${txFilters.type==='expense'?'selected':''}>Dépenses</option>
+      </select>
+      <select class="input md:w-48" onchange="txFilters.categoryId=this.value; render()">
+        <option value="">Toutes les catégories</option>
+        ${state.categories.map(c => `<option value="${c.id}" ${txFilters.categoryId===c.id?'selected':''}>${c.name}</option>`).join('')}
+      </select>
+      <select class="input md:w-48" onchange="txFilters.accountId=this.value; render()">
+        <option value="">Tous les comptes</option>
+        ${state.accounts.map(a => `<option value="${a.id}" ${txFilters.accountId===a.id?'selected':''}>${a.name}</option>`).join('')}
+      </select>
+    </div>
+
+    <div class="card divide-y" style="border-color:var(--border)">
+      ${filtered.length === 0 ? `<div class="p-10 text-center text-sm" style="color:var(--muted)">Aucune transaction pour ces filtres.</div>` :
+        filtered.map(t => {
+          const c = catById(t.categoryId); const a = accById(t.accountId);
+          const color = t.type === 'income' ? 'var(--success)' : 'var(--danger)';
+          return `
+          <div class="flex items-center justify-between px-4 py-3 row-hover" style="border-color:var(--border)">
+            <div class="flex items-center gap-3 min-w-0">
+              <span class="h-9 w-9 rounded-full flex items-center justify-center shrink-0" style="background:${c?c.color:'#94A3B8'}22;color:${c?c.color:'#94A3B8'}">●</span>
+              <div class="min-w-0">
+                <p class="text-sm font-medium truncate">${escapeHtml(t.description) || (c?c.name:'Transaction')}</p>
+                <p class="text-xs truncate" style="color:var(--muted)">${t.date} · ${a?a.name:''}${c?(' · '+c.name):''}</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+              <span class="mono text-sm font-semibold" style="color:${color}">${t.type==='income'?'+':'-'}${money(t.amount)}</span>
+              <button class="btn btn-outline !px-2 !py-1 text-xs" onclick="openTxModal('${t.id}')">✏️</button>
+              <button class="btn btn-outline !px-2 !py-1 text-xs" onclick="deleteTx('${t.id}')">🗑️</button>
+            </div>
+          </div>`;
+        }).join('')}
+    </div>
+  `;
+}
+
+function openTxModal(id){
+  editingTx = id ? state.transactions.find(t => t.id === id) : null;
+  const type = editingTx ? editingTx.type : 'expense';
+  showModal(`
+    <h2 class="text-lg font-semibold mb-4">${editingTx ? 'Modifier' : 'Nouvelle'} transaction</h2>
+    <form onsubmit="saveTx(event)" class="space-y-3">
+      <div class="flex gap-2 p-1 rounded-xl" style="background:var(--bg)">
+        <button type="button" data-type="expense" class="flex-1 btn ${type==='expense'?'btn-primary':'btn-outline'}" onclick="setTxType('expense')">Dépense</button>
+        <button type="button" data-type="income" class="flex-1 btn ${type==='income'?'btn-primary':'btn-outline'}" onclick="setTxType('income')">Revenu</button>
+      </div>
+      <input type="hidden" id="txType" value="${type}">
+      <div>
+        <label class="text-sm font-medium block mb-1">Montant</label>
+        <input class="input mono" type="number" step="0.01" id="txAmount" required value="${editingTx?editingTx.amount:''}" placeholder="0.00">
+      </div>
+      <div>
+        <label class="text-sm font-medium block mb-1">Catégorie</label>
+        <select class="input" id="txCategory">${renderCategoryOptions(type, editingTx?.categoryId)}</select>
+      </div>
+      <div>
+        <label class="text-sm font-medium block mb-1">Compte</label>
+        <select class="input" id="txAccount">${state.accounts.map(a=>`<option value="${a.id}" ${editingTx?.accountId===a.id?'selected':''}>${a.name}</option>`).join('')}</select>
+      </div>
+      <div>
+        <label class="text-sm font-medium block mb-1">Date</label>
+        <input class="input" type="date" id="txDate" value="${editingTx?editingTx.date:todayISO()}">
+      </div>
+      <div>
+        <label class="text-sm font-medium block mb-1">Description (optionnel)</label>
+        <textarea class="input" id="txDescription" rows="2">${editingTx?escapeHtml(editingTx.description||''):''}</textarea>
+      </div>
+      <button type="submit" class="btn btn-primary w-full">${editingTx ? 'Enregistrer' : 'Ajouter'}</button>
+    </form>
+  `);
+}
+function setTxType(type){
+  document.getElementById('txType').value = type;
+  document.querySelectorAll('[data-type]').forEach(b => b.className = 'flex-1 btn ' + (b.dataset.type === type ? 'btn-primary' : 'btn-outline'));
+  document.getElementById('txCategory').innerHTML = renderCategoryOptions(type);
+}
+function renderCategoryOptions(type, selected){
+  return state.categories.filter(c => c.type === type).map(c => `<option value="${c.id}" ${selected===c.id?'selected':''}>${c.name}</option>`).join('');
+}
+function saveTx(e){
+  e.preventDefault();
+  const tx = {
+    id: editingTx ? editingTx.id : uid(),
+    type: document.getElementById('txType').value,
+    amount: parseFloat(document.getElementById('txAmount').value),
+    categoryId: document.getElementById('txCategory').value,
+    accountId: document.getElementById('txAccount').value,
+    date: document.getElementById('txDate').value,
+    description: document.getElementById('txDescription').value,
+  };
+  applyBalanceChange(tx, editingTx, 'apply');
+  if(editingTx){
+    const idx = state.transactions.findIndex(t => t.id === editingTx.id);
+    state.transactions[idx] = tx;
+  } else {
+    state.transactions.push(tx);
+  }
+  saveData(); closeModal(); render();
+  toast(editingTx ? 'Transaction modifiée' : (tx.type==='expense'?'Dépense ajoutée':'Revenu ajouté'));
+}
+function applyBalanceChange(newTx, oldTx, mode){
+  if(oldTx){
+    const acc = accById(oldTx.accountId);
+    if(acc) acc.balance += oldTx.type === 'income' ? -oldTx.amount : oldTx.amount;
+  }
+  const acc = accById(newTx.accountId);
+  if(acc) acc.balance += newTx.type === 'income' ? newTx.amount : -newTx.amount;
+}
+function deleteTx(id){
+  const tx = state.transactions.find(t => t.id === id);
+  if(!tx) return;
+  if(!confirm('Supprimer cette transaction ?')) return;
+  const acc = accById(tx.accountId);
+  if(acc) acc.balance += tx.type === 'income' ? -tx.amount : tx.amount;
+  state.transactions = state.transactions.filter(t => t.id !== id);
+  saveData(); render(); toast('Transaction supprimée');
+}
+
+/* ============================================================
+   BUDGETS
+   ============================================================ */
+function renderBudgets(){
+  const { start, end } = monthRange();
+  const withProgress = state.budgets.map(b => {
+    const spent = state.transactions
+      .filter(t => t.type === 'expense' && t.categoryId === b.categoryId && t.date >= start && t.date < end)
+      .reduce((s,t) => s + t.amount, 0);
+    const pct = b.amountLimit > 0 ? Math.round(spent / b.amountLimit * 100) : 0;
+    let status = 'ok'; if(pct >= 100) status = 'exceeded'; else if(pct >= (b.alertThreshold||80)) status = 'warning';
+    return { ...b, spent, pct, status, remaining: b.amountLimit - spent };
+  });
+
+  const statusColor = { ok: 'var(--success)', warning: 'var(--warning)', exceeded: 'var(--danger)' };
+
+  return `
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-2xl font-semibold">Budgets mensuels</h1>
+        <p class="text-sm" style="color:var(--muted)">Fixe une limite par catégorie.</p>
+      </div>
+      <button class="btn btn-primary" onclick="openBudgetModal()">+ Nouveau budget</button>
+    </div>
+
+    ${withProgress.length === 0 ? `<div class="card p-10 text-center text-sm" style="color:var(--muted)">Aucun budget. Ex: Restaurant 200$, Essence 250$, Loisirs 150$</div>` : `
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+      ${withProgress.map(b => {
+        const c = catById(b.categoryId);
+        return `
+        <div class="card p-4">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <span class="h-2.5 w-2.5 rounded-full" style="background:${c?c.color:'#94A3B8'}"></span>
+              <span class="text-sm font-medium">${escapeHtml(b.name)}</span>
+              ${b.status==='exceeded' ? '<span title="Dépassé">⚠️</span>' : ''}
+            </div>
+            <div class="flex gap-1">
+              <button class="btn btn-outline !px-2 !py-1 text-xs" onclick="openBudgetModal('${b.id}')">✏️</button>
+              <button class="btn btn-outline !px-2 !py-1 text-xs" onclick="deleteBudget('${b.id}')">🗑️</button>
+            </div>
+          </div>
+          <div class="flex items-baseline justify-between mb-1">
+            <span class="mono text-lg font-semibold">${money(b.spent)}</span>
+            <span class="text-xs" style="color:var(--muted)">/ ${money(b.amountLimit)}</span>
+          </div>
+          <div class="progress-track"><div class="progress-bar" style="width:${Math.min(b.pct,100)}%;background:${statusColor[b.status]}"></div></div>
+          <div class="flex justify-between text-xs mt-1">
+            <span style="color:${statusColor[b.status]}">${b.pct}% utilisé</span>
+            <span style="color:var(--muted)">${b.remaining>=0?money(b.remaining)+' restant':money(Math.abs(b.remaining))+' de dépassement'}</span>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`}
+  `;
+}
+function openBudgetModal(id){
+  editingBudget = id ? state.budgets.find(b => b.id === id) : null;
+  showModal(`
+    <h2 class="text-lg font-semibold mb-4">${editingBudget ? 'Modifier' : 'Nouveau'} budget</h2>
+    <form onsubmit="saveBudget(event)" class="space-y-3">
+      <div><label class="text-sm font-medium block mb-1">Nom</label>
+        <input class="input" id="bName" required value="${editingBudget?escapeHtml(editingBudget.name):''}" placeholder="Ex: Restaurant"></div>
+      <div><label class="text-sm font-medium block mb-1">Catégorie</label>
+        <select class="input" id="bCategory">${state.categories.filter(c=>c.type==='expense').map(c=>`<option value="${c.id}" ${editingBudget?.categoryId===c.id?'selected':''}>${c.name}</option>`).join('')}</select></div>
+      <div><label class="text-sm font-medium block mb-1">Montant limite</label>
+        <input class="input mono" type="number" step="0.01" id="bAmount" required value="${editingBudget?editingBudget.amountLimit:''}" placeholder="200.00"></div>
+      <div><label class="text-sm font-medium block mb-1">Seuil d'alerte (%)</label>
+        <input class="input" type="number" min="1" max="100" id="bThreshold" value="${editingBudget?editingBudget.alertThreshold:80}"></div>
+      <button type="submit" class="btn btn-primary w-full">${editingBudget ? 'Enregistrer' : 'Créer'}</button>
+    </form>
+  `);
+}
+function saveBudget(e){
+  e.preventDefault();
+  const budget = {
+    id: editingBudget ? editingBudget.id : uid(),
+    name: document.getElementById('bName').value,
+    categoryId: document.getElementById('bCategory').value,
+    amountLimit: parseFloat(document.getElementById('bAmount').value),
+    alertThreshold: parseInt(document.getElementById('bThreshold').value) || 80,
+  };
+  if(editingBudget){ const idx = state.budgets.findIndex(b=>b.id===editingBudget.id); state.budgets[idx]=budget; }
+  else state.budgets.push(budget);
+  saveData(); closeModal(); render(); toast(editingBudget?'Budget modifié':'Budget créé');
+}
+function deleteBudget(id){
+  if(!confirm('Supprimer ce budget ?')) return;
+  state.budgets = state.budgets.filter(b => b.id !== id);
+  saveData(); render(); toast('Budget supprimé');
+}
+
+/* ============================================================
+   FACTURES
+   ============================================================ */
+function renderBills(){
+  const today = todayISO();
+  const overdue = state.bills.filter(b => b.status==='pending' && b.dueDate < today);
+  const upcoming = state.bills.filter(b => b.status==='pending' && b.dueDate >= today);
+  const paid = state.bills.filter(b => b.status==='paid');
+
+  function billGroup(title, items, icon){
+    if(items.length===0) return '';
+    return `
+      <div class="mb-4">
+        <h3 class="text-sm font-semibold mb-2">${icon} ${title} <span class="text-xs px-2 py-0.5 rounded-full" style="background:var(--border)">${items.length}</span></h3>
+        <div class="card divide-y" style="border-color:var(--border)">
+          ${items.map(b => {
+            const c = catById(b.categoryId);
+            return `
+            <div class="flex items-center justify-between px-4 py-3">
+              <div>
+                <p class="text-sm font-medium">${escapeHtml(b.name)}</p>
+                <p class="text-xs" style="color:var(--muted)">Échéance : ${b.dueDate}${c?(' · '+c.name):''}</p>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="mono text-sm font-semibold">${money(b.amount)}</span>
+                ${b.status!=='paid' ? `<button class="btn btn-outline text-xs" onclick="markBillPaid('${b.id}')">Marquer payé</button>` : ''}
+                <button class="btn btn-outline !px-2 !py-1 text-xs" onclick="deleteBill('${b.id}')">🗑️</button>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  }
+
+  return `
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-2xl font-semibold">Factures et rappels</h1>
+        <p class="text-sm" style="color:var(--muted)">Loyer, téléphone, Netflix, Hydro, Internet...</p>
+      </div>
+      <button class="btn btn-primary" onclick="openBillModal()">+ Nouvelle facture</button>
+    </div>
+    ${overdue.length===0 && upcoming.length===0 && paid.length===0 ? `<div class="card p-10 text-center text-sm" style="color:var(--muted)">Aucune facture pour l'instant.</div>` : ''}
+    ${billGroup('En retard', overdue, '⚠️')}
+    ${billGroup('À venir', upcoming, '⏰')}
+    ${billGroup('Payées', paid, '✅')}
+  `;
+}
+function openBillModal(){
+  showModal(`
+    <h2 class="text-lg font-semibold mb-4">Nouvelle facture récurrente</h2>
+    <form onsubmit="saveBill(event)" class="space-y-3">
+      <div><label class="text-sm font-medium block mb-1">Nom</label>
+        <input class="input" id="billName" required placeholder="Ex: Loyer, Netflix, Hydro..."></div>
+      <div><label class="text-sm font-medium block mb-1">Montant</label>
+        <input class="input mono" type="number" step="0.01" id="billAmount" required></div>
+      <div><label class="text-sm font-medium block mb-1">Date d'échéance</label>
+        <input class="input" type="date" id="billDueDate" value="${todayISO()}"></div>
+      <div><label class="text-sm font-medium block mb-1">Catégorie</label>
+        <select class="input" id="billCategory">${state.categories.filter(c=>c.type==='expense').map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select></div>
+      <div><label class="text-sm font-medium block mb-1">Compte de paiement</label>
+        <select class="input" id="billAccount">${state.accounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('')}</select></div>
+      <div><label class="text-sm font-medium block mb-1">Fréquence</label>
+        <select class="input" id="billFrequency">
+          <option value="once">Une seule fois</option>
+          <option value="monthly" selected>Mensuelle</option>
+          <option value="weekly">Hebdomadaire</option>
+          <option value="yearly">Annuelle</option>
+        </select></div>
+      <button type="submit" class="btn btn-primary w-full">Créer la facture</button>
+    </form>
+  `);
+}
+function saveBill(e){
+  e.preventDefault();
+  state.bills.push({
+    id: uid(),
+    name: document.getElementById('billName').value,
+    amount: parseFloat(document.getElementById('billAmount').value),
+    dueDate: document.getElementById('billDueDate').value,
+    categoryId: document.getElementById('billCategory').value,
+    accountId: document.getElementById('billAccount').value,
+    frequency: document.getElementById('billFrequency').value,
+    status: 'pending',
+  });
+  saveData(); closeModal(); render(); toast('Facture créée');
+}
+function markBillPaid(id){
+  const bill = state.bills.find(b => b.id === id);
+  if(!bill) return;
+  const tx = { id: uid(), type: 'expense', amount: bill.amount, categoryId: bill.categoryId, accountId: bill.accountId, date: todayISO(), description: 'Facture payée : ' + bill.name };
+  state.transactions.push(tx);
+  applyBalanceChange(tx, null);
+  bill.status = 'paid';
+  if(bill.frequency !== 'once'){
+    const next = new Date(bill.dueDate);
+    if(bill.frequency==='weekly') next.setDate(next.getDate()+7);
+    else if(bill.frequency==='monthly') next.setMonth(next.getMonth()+1);
+    else next.setFullYear(next.getFullYear()+1);
+    state.bills.push({ ...bill, id: uid(), dueDate: next.toISOString().slice(0,10), status: 'pending' });
+  }
+  saveData(); render(); toast('Facture marquée comme payée');
+}
+function deleteBill(id){
+  if(!confirm('Supprimer cette facture ?')) return;
+  state.bills = state.bills.filter(b => b.id !== id);
+  saveData(); render(); toast('Facture supprimée');
+}
+
+/* ============================================================
+   INVESTISSEMENTS — règle automatique
+   ============================================================ */
+function renderInvestments(){
+  const s = state.investmentSettings;
+  const { start, end } = monthRange();
+  const lastMonthTx = state.transactions.filter(t => t.date >= start && t.date < end);
+  const exampleRemaining = 800;
+
+  return `
+    <h1 class="text-2xl font-semibold mb-1">Investissements</h1>
+    <p class="text-sm mb-6" style="color:var(--muted)">Règle d'investissement automatique de fin de mois.</p>
+
+    <div class="card p-6 space-y-5">
+      <p class="text-sm">À la fin du mois, <b>${s.percent}%</b> de ton solde restant (revenus − dépenses) est transféré vers ton compte Investissements.</p>
+
+      <div class="flex items-center justify-between p-3 rounded-xl" style="border:1px solid var(--border)">
+        <span class="text-sm font-medium">Activer la règle</span>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" class="sr-only peer" ${s.enabled?'checked':''} onchange="toggleInvestRule(this.checked)">
+          <div class="w-11 h-6 rounded-full transition-colors" style="background:${s.enabled?'var(--primary)':'var(--border)'}">
+            <div class="h-5 w-5 bg-white rounded-full shadow transform transition-transform mt-0.5 ${s.enabled?'translate-x-5':'translate-x-0.5'}"></div>
+          </div>
+        </label>
+      </div>
+
+      <div>
+        <div class="flex justify-between text-sm mb-1">
+          <span class="font-medium">Pourcentage à investir</span>
+          <span class="mono">${s.percent}%</span>
+        </div>
+        <input type="range" min="0" max="100" step="5" value="${s.percent}" class="w-full" oninput="updateInvestPercent(this.value)">
+        <p class="text-xs mt-2" style="color:var(--muted)">
+          Exemple : sur ${money(exampleRemaining)} restants, ${money(exampleRemaining*s.percent/100)} vont aux Investissements
+          et ${money(exampleRemaining - exampleRemaining*s.percent/100)} restent sur ton compte principal.
+        </p>
+      </div>
+
+      <button class="btn btn-outline w-full" onclick="runInvestmentTransfer()">Exécuter le transfert du mois précédent</button>
+
+      ${state.investmentHistory.length > 0 ? `
+      <div>
+        <h4 class="text-sm font-semibold mb-2">Historique des transferts</h4>
+        <div class="card divide-y" style="border-color:var(--border)">
+          ${state.investmentHistory.slice().reverse().map(h => `
+            <div class="flex justify-between px-4 py-2 text-sm">
+              <span>${h.month}</span>
+              <span class="mono" style="color:var(--primary)">+${money(h.invested)}</span>
+            </div>`).join('')}
+        </div>
+      </div>` : ''}
+    </div>
+  `;
+}
+function toggleInvestRule(checked){ state.investmentSettings.enabled = checked; saveData(); render(); }
+function updateInvestPercent(val){ state.investmentSettings.percent = parseInt(val); saveData(); render(); }
+function runInvestmentTransfer(){
+  const s = state.investmentSettings;
+  if(!s.enabled){ toast('Active la règle avant de lancer un transfert', true); return; }
+  const now = new Date(); now.setMonth(now.getMonth()-1);
+  const { start, end } = monthRange(now);
+  const tx = state.transactions.filter(t => t.date >= start && t.date < end);
+  const income = tx.filter(t=>t.type==='income').reduce((sum,t)=>sum+t.amount,0);
+  const expenses = tx.filter(t=>t.type==='expense').reduce((sum,t)=>sum+t.amount,0);
+  const remaining = income - expenses;
+  const invested = remaining > 0 ? remaining * s.percent / 100 : 0;
+  const kept = remaining - invested;
+
+  if(invested > 0){
+    const mainAcc = state.accounts[0], investAcc = state.accounts[1];
+    mainAcc.balance -= invested; investAcc.balance += invested;
+  }
+  state.investmentHistory.push({
+    id: uid(), month: now.toLocaleDateString('fr-CA',{month:'long',year:'numeric'}),
+    income, expenses, remaining, invested, kept,
+  });
+  saveData(); render();
+  toast(invested > 0 ? `${money(invested)} transférés vers Investissements` : 'Aucun montant à transférer (solde négatif ou nul)');
+}
+
+/* ============================================================
+   CATÉGORIES
+   ============================================================ */
+function renderCategories(){
+  return `
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-2xl font-semibold">Catégories</h1>
+        <p class="text-sm" style="color:var(--muted)">12 catégories par défaut + tes catégories personnalisées.</p>
+      </div>
+      <button class="btn btn-primary" onclick="openCategoryModal()">+ Nouvelle catégorie</button>
+    </div>
+    <div class="grid md:grid-cols-2 gap-3">
+      ${state.categories.map(c => `
+        <div class="card p-3 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <span class="h-3 w-3 rounded-full" style="background:${c.color}"></span>
+            <span class="text-sm font-medium">${escapeHtml(c.name)}</span>
+            <span class="text-xs px-2 py-0.5 rounded-full" style="background:var(--border);color:var(--muted)">${c.type==='income'?'Revenu':'Dépense'}</span>
+          </div>
+          ${!c.isSystem ? `<button class="btn btn-outline !px-2 !py-1 text-xs" onclick="deleteCategory('${c.id}')">🗑️</button>` : `<span class="text-xs" style="color:var(--muted)">Défaut</span>`}
+        </div>`).join('')}
+    </div>
+  `;
+}
+function openCategoryModal(){
+  showModal(`
+    <h2 class="text-lg font-semibold mb-4">Nouvelle catégorie</h2>
+    <form onsubmit="saveCategory(event)" class="space-y-3">
+      <div><label class="text-sm font-medium block mb-1">Nom</label><input class="input" id="catName" required></div>
+      <div><label class="text-sm font-medium block mb-1">Type</label>
+        <select class="input" id="catType"><option value="expense">Dépense</option><option value="income">Revenu</option></select></div>
+      <div><label class="text-sm font-medium block mb-1">Couleur</label><input class="input" type="color" id="catColor" value="#6366F1"></div>
+      <button type="submit" class="btn btn-primary w-full">Créer</button>
+    </form>
+  `);
+}
+function saveCategory(e){
+  e.preventDefault();
+  state.categories.push({ id: uid(), name: document.getElementById('catName').value, type: document.getElementById('catType').value, color: document.getElementById('catColor').value, isSystem: false });
+  saveData(); closeModal(); render(); toast('Catégorie créée');
+}
+function deleteCategory(id){
+  if(!confirm('Supprimer cette catégorie ?')) return;
+  state.categories = state.categories.filter(c => c.id !== id);
+  saveData(); render(); toast('Catégorie supprimée');
+}
+
+/* ============================================================
+   AGENDA — état
+   ============================================================ */
+let agendaSubview = 'month';   // month | week | day | upcoming | tasks | goals
+let agendaCursor = new Date(); // date de référence pour la navigation
+
+function agCatById(id){ return state.agendaCategories.find(c => c.id === id); }
+function fmtDate(d){ return d.toISOString().slice(0,10); }
+function addDays(d, n){ const r = new Date(d); r.setDate(r.getDate()+n); return r; }
+function startOfWeek(d){ const r = new Date(d); const day = (r.getDay()+6)%7; r.setDate(r.getDate()-day); r.setHours(0,0,0,0); return r; }
+function sameDay(a,b){ return fmtDate(a) === fmtDate(b); }
+
+/** Génère les occurrences d'un événement récurrent dans une plage [start,end] (inclusif). */
+function getOccurrences(event, rangeStart, rangeEnd){
+  const freq = event.recurrence && event.recurrence.freq;
+  const base = new Date(event.date + 'T00:00:00');
+  if(!freq || freq === 'none'){
+    return (base >= rangeStart && base <= rangeEnd) ? [event.date] : [];
+  }
+  const out = [];
+  let cursor = new Date(base);
+  let guard = 0;
+  while(cursor <= rangeEnd && guard < 500){
+    guard++;
+    if(cursor >= rangeStart) out.push(fmtDate(cursor));
+    if(freq === 'daily') cursor = addDays(cursor, 1);
+    else if(freq === 'weekly') cursor = addDays(cursor, 7);
+    else if(freq === 'monthly') cursor.setMonth(cursor.getMonth()+1);
+    else if(freq === 'yearly') cursor.setFullYear(cursor.getFullYear()+1);
+    else break;
+  }
+  return out;
+}
+
+/** Retourne toutes les entrées "agenda" (événements + factures) pour une date donnée. */
+function agendaItemsForDate(dateStr){
+  const items = [];
+  const dayStart = new Date(dateStr + 'T00:00:00'), dayEnd = new Date(dateStr + 'T23:59:59');
+  state.events.forEach(ev => {
+    const occ = getOccurrences(ev, dayStart, dayEnd);
+    if(occ.includes(dateStr)){
+      const cat = agCatById(ev.agendaCategoryId);
+      items.push({ kind:'event', id: ev.id, title: ev.title, time: ev.startTime||'', endTime: ev.endTime||'',
+        color: ev.color || (cat?cat.color:'#6366F1'), icon: cat?cat.icon:'📅', location: ev.location, raw: ev });
+    }
+  });
+  state.bills.forEach(b => {
+    if(b.dueDate === dateStr){
+      items.push({ kind:'bill', id: b.id, title: `${b.name} — ${money(b.amount)}`, time:'', color:'#EF4444', icon:'🔴',
+        paid: b.status==='paid', raw: b });
+    }
+  });
+  state.tasks.forEach(t => {
+    if(t.dueDate === dateStr){
+      const pcolor = t.priority==='urgent'?'#EF4444':t.priority==='important'?'#F59E0B':'#10B981';
+      items.push({ kind:'task', id: t.id, title: t.title, time:'', color: pcolor, icon:'✅', done: t.done, raw: t });
+    }
+  });
+  return items.sort((a,b) => (a.time||'').localeCompare(b.time||''));
+}
+
+/* ============================================================
+   AGENDA — rendu principal + sous-onglets
+   ============================================================ */
+function renderAgenda(){
+  const subtabs = [
+    ['month','Mois'], ['week','Semaine'], ['day','Jour'], ['upcoming','À venir'], ['tasks','Tâches'], ['goals','Objectifs'],
+  ];
+  return `
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+      <div>
+        <h1 class="text-2xl font-semibold">Agenda</h1>
+        <p class="text-sm" style="color:var(--muted)">Rendez-vous, paiements, tâches et objectifs, au même endroit.</p>
+      </div>
+      <div class="flex gap-2">
+        <button class="btn btn-outline" onclick="requestNotifPermission()">🔔 Notifications</button>
+        <button class="btn btn-primary" onclick="openEventModal()">+ Événement</button>
+      </div>
+    </div>
+
+    ${renderInsights()}
+
+    <div class="flex gap-1 mb-4 overflow-x-auto pb-1">
+      ${subtabs.map(([id,label]) => `<div class="subtab ${agendaSubview===id?'active':''}" onclick="setAgendaSubview('${id}')">${label}</div>`).join('')}
+    </div>
+
+    <div id="agendaBody">
+      ${agendaSubview==='month' ? renderMonthView() : ''}
+      ${agendaSubview==='week' ? renderWeekView() : ''}
+      ${agendaSubview==='day' ? renderDayView() : ''}
+      ${agendaSubview==='upcoming' ? renderUpcomingList() : ''}
+      ${agendaSubview==='tasks' ? renderTasksSection() : ''}
+      ${agendaSubview==='goals' ? renderGoalsSection() : ''}
+    </div>
+  `;
+}
+function setAgendaSubview(id){ agendaSubview = id; render(); }
+
+/* ---- Assistant intelligent (analyse basée sur des règles) ---- */
+function renderInsights(){
+  const insights = generateInsights();
+  if(insights.length === 0) return '';
+  return `
+    <div class="insight-card p-4 mb-4">
+      <p class="text-sm font-semibold mb-2">✨ Assistant</p>
+      <ul class="space-y-1.5">
+        ${insights.map(i => `<li class="text-sm flex gap-2"><span>${i.icon}</span><span>${i.text}</span></li>`).join('')}
+      </ul>
+    </div>`;
+}
+
+function generateInsights(){
+  const insights = [];
+  const today = new Date(); today.setHours(0,0,0,0);
+  const in7 = addDays(today,7), tomorrow = addDays(today,1);
+
+  // Paiements de la semaine
+  const weekBills = state.bills.filter(b => b.status==='pending' && new Date(b.dueDate) >= today && new Date(b.dueDate) <= in7);
+  if(weekBills.length > 0){
+    const total = weekBills.reduce((s,b)=>s+b.amount,0);
+    insights.push({ icon:'💳', text:`Tu as ${weekBills.length} paiement${weekBills.length>1?'s':''} prévu${weekBills.length>1?'s':''} cette semaine pour un total de ${money(total)}.` });
+    if(total > 300){
+      insights.push({ icon:'⚠️', text:`Beaucoup de dépenses prévues cette semaine (${money(total)}). Il pourrait être préférable de reporter les achats non essentiels après ton prochain salaire.` });
+    }
+  }
+
+  // Rappels de paiement individuels (bientôt dus)
+  state.bills.filter(b => b.status==='pending').forEach(b => {
+    const days = Math.round((new Date(b.dueDate) - today) / 86400000);
+    if(days >= 0 && days <= 3){
+      insights.push({ icon:'🔔', text:`Ton paiement de ${b.name} de ${money(b.amount)} arrive dans ${days===0?"aujourd'hui":days+' jour'+(days>1?'s':'')}.` });
+    }
+  });
+
+  // Événements demain
+  agendaItemsForDate(fmtDate(tomorrow)).filter(i => i.kind==='event').forEach(ev => {
+    insights.push({ icon:'📌', text:`Tu as "${ev.title}" demain${ev.time?(' à '+ev.time):''}.` });
+  });
+
+  // Conflit événement + paiement le même jour
+  const tomorrowItems = agendaItemsForDate(fmtDate(tomorrow));
+  const hasEvent = tomorrowItems.some(i => i.kind==='event');
+  const hasBill = tomorrowItems.some(i => i.kind==='bill');
+  if(hasEvent && hasBill){
+    insights.push({ icon:'⚡', text:`Attention : tu as un événement et un paiement prévus le même jour (demain).` });
+  }
+
+  // Objectifs financiers
+  state.goals.forEach(g => {
+    const remaining = g.targetAmount - g.currentAmount;
+    if(remaining > 0){
+      insights.push({ icon:'🎯', text:`Ton objectif "${g.name}" nécessite encore ${money(remaining)}.` });
+    }
+  });
+
+  // Tâches non terminées bientôt dues
+  state.tasks.filter(t => !t.done && t.dueDate).forEach(t => {
+    const days = Math.round((new Date(t.dueDate) - today) / 86400000);
+    if(days >= 0 && days <= 2){
+      insights.push({ icon:'📝', text:`Tâche à terminer bientôt : "${t.title}" (échéance dans ${days===0?"aujourd'hui":days+' jour'+(days>1?'s':'')}).` });
+    }
+  });
+
+  return insights.slice(0, 8);
+}
+
+/* ---- Notifications navigateur (best-effort, onglet ouvert uniquement) ---- */
+function requestNotifPermission(){
+  if(!('Notification' in window)){ toast('Les notifications ne sont pas supportées par ce navigateur', true); return; }
+  Notification.requestPermission().then(perm => {
+    toast(perm === 'granted' ? 'Notifications activées' : 'Notifications refusées', perm !== 'granted');
+  });
+}
+function maybeSendNotifications(){
+  if(!('Notification' in window) || Notification.permission !== 'granted') return;
+  const today = fmtDate(new Date());
+  if(state.lastNotifiedDate === today) return; // une fois par jour maximum
+  state.lastNotifiedDate = today; saveData();
+  const urgent = generateInsights().slice(0, 3);
+  urgent.forEach((i, idx) => {
+    setTimeout(() => new Notification('Budget — ' + i.icon, { body: i.text }), idx * 400);
+  });
+}
+
+/* ---- Vue mensuelle ---- */
+function renderMonthView(){
+  const year = agendaCursor.getFullYear(), month = agendaCursor.getMonth();
+  const firstOfMonth = new Date(year, month, 1);
+  const gridStart = startOfWeek(firstOfMonth);
+  const days = []; for(let i=0;i<42;i++) days.push(addDays(gridStart, i));
+  const todayStr = fmtDate(new Date());
+  const weekdays = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+
+  return `
+    <div class="flex items-center justify-between mb-3">
+      <button class="btn btn-outline" onclick="shiftAgendaCursor(-1,'month')">‹</button>
+      <p class="text-sm font-semibold">${agendaCursor.toLocaleDateString('fr-CA',{month:'long',year:'numeric'})}</p>
+      <button class="btn btn-outline" onclick="shiftAgendaCursor(1,'month')">›</button>
+    </div>
+    <div class="cal-grid mb-2">
+      ${weekdays.map(w => `<div class="text-xs text-center font-medium" style="color:var(--muted)">${w}</div>`).join('')}
+    </div>
+    <div class="cal-grid">
+      ${days.map(d => {
+        const dStr = fmtDate(d);
+        const items = agendaItemsForDate(dStr);
+        const isOther = d.getMonth() !== month;
+        return `
+        <div class="cal-day ${dStr===todayStr?'today':''} ${isOther?'other-month':''}" onclick="goToDay('${dStr}')">
+          <span class="text-xs font-medium">${d.getDate()}</span>
+          ${items.slice(0,3).map(i => `<span class="cal-chip" style="background:${i.color}">${i.icon} ${escapeHtml(i.title)}</span>`).join('')}
+          ${items.length>3 ? `<span class="text-xs" style="color:var(--muted)">+${items.length-3} autre(s)</span>` : ''}
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+function shiftAgendaCursor(delta, unit){
+  if(unit==='month') agendaCursor.setMonth(agendaCursor.getMonth()+delta);
+  if(unit==='week') agendaCursor = addDays(agendaCursor, 7*delta);
+  if(unit==='day') agendaCursor = addDays(agendaCursor, delta);
+  render();
+}
+function goToDay(dStr){ agendaCursor = new Date(dStr+'T00:00:00'); agendaSubview = 'day'; render(); }
+
+/* ---- Vue hebdomadaire ---- */
+function renderWeekView(){
+  const start = startOfWeek(agendaCursor);
+  const days = [...Array(7)].map((_,i) => addDays(start,i));
+  const todayStr = fmtDate(new Date());
+  return `
+    <div class="flex items-center justify-between mb-3">
+      <button class="btn btn-outline" onclick="shiftAgendaCursor(-1,'week')">‹</button>
+      <p class="text-sm font-semibold">Semaine du ${start.toLocaleDateString('fr-CA',{day:'numeric',month:'long'})}</p>
+      <button class="btn btn-outline" onclick="shiftAgendaCursor(1,'week')">›</button>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-7 gap-3">
+      ${days.map(d => {
+        const dStr = fmtDate(d); const items = agendaItemsForDate(dStr);
+        return `
+        <div class="card p-3 ${dStr===todayStr?'':''}" style="${dStr===todayStr?'border-color:var(--primary)':''}">
+          <p class="text-xs font-semibold mb-2" style="color:var(--muted)">${d.toLocaleDateString('fr-CA',{weekday:'short',day:'numeric'})}</p>
+          <div class="space-y-1.5">
+            ${items.length===0 ? `<p class="text-xs" style="color:var(--muted)">—</p>` :
+              items.map(i => `<div class="text-xs rounded-lg px-2 py-1" style="background:${i.color}22;color:${i.color}">${i.time?i.time+' · ':''}${i.icon} ${escapeHtml(i.title)}</div>`).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+/* ---- Vue quotidienne ---- */
+function renderDayView(){
+  const dStr = fmtDate(agendaCursor);
+  const items = agendaItemsForDate(dStr);
+  return `
+    <div class="flex items-center justify-between mb-3">
+      <button class="btn btn-outline" onclick="shiftAgendaCursor(-1,'day')">‹</button>
+      <p class="text-sm font-semibold">${agendaCursor.toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'})}</p>
+      <button class="btn btn-outline" onclick="shiftAgendaCursor(1,'day')">›</button>
+    </div>
+    <div class="card divide-y" style="border-color:var(--border)">
+      ${items.length===0 ? `<div class="p-8 text-center text-sm" style="color:var(--muted)">Rien de prévu ce jour-là. Profites-en 🎉</div>` :
+        items.map(i => `
+        <div class="flex items-center justify-between px-4 py-3">
+          <div class="flex items-center gap-3">
+            <span class="h-9 w-9 rounded-full flex items-center justify-center shrink-0" style="background:${i.color}22">${i.icon}</span>
+            <div>
+              <p class="text-sm font-medium ${i.done||i.paid?'line-through opacity-50':''}">${escapeHtml(i.title)}</p>
+              <p class="text-xs" style="color:var(--muted)">${i.time?i.time+(i.endTime?' – '+i.endTime:''):''}${i.location?(' · '+escapeHtml(i.location)):''}</p>
+            </div>
+          </div>
+          ${i.kind==='event' ? `<button class="btn btn-outline !px-2 !py-1 text-xs" onclick="deleteEvent('${i.id}')">🗑️</button>` : ''}
+        </div>`).join('')}
+    </div>
+  `;
+}
+
+/* ---- Liste des événements à venir ---- */
+function renderUpcomingList(){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const end = addDays(today, 30);
+  const byDate = {};
+  for(let d = new Date(today); d <= end; d = addDays(d,1)){
+    const items = agendaItemsForDate(fmtDate(d));
+    if(items.length) byDate[fmtDate(d)] = items;
+  }
+  const dates = Object.keys(byDate).sort();
+  if(dates.length===0) return `<div class="card p-10 text-center text-sm" style="color:var(--muted)">Rien de prévu dans les 30 prochains jours.</div>`;
+  return dates.map(dStr => `
+    <div class="mb-4">
+      <p class="text-xs font-semibold mb-2" style="color:var(--muted)">${new Date(dStr+'T00:00:00').toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'})}</p>
+      <div class="card divide-y" style="border-color:var(--border)">
+        ${byDate[dStr].map(i => `
+          <div class="flex items-center gap-3 px-4 py-2.5">
+            <span style="color:${i.color}">${i.icon}</span>
+            <span class="text-sm flex-1 ${i.done||i.paid?'line-through opacity-50':''}">${escapeHtml(i.title)}</span>
+            ${i.time ? `<span class="text-xs mono" style="color:var(--muted)">${i.time}</span>` : ''}
+          </div>`).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+/* ============================================================
+   ÉVÉNEMENTS — modale & CRUD
+   ============================================================ */
+let editingEvent = null;
+function openEventModal(id, prefillDate){
+  editingEvent = id ? state.events.find(e => e.id === id) : null;
+  const d = editingEvent ? editingEvent : { date: prefillDate || fmtDate(agendaCursor), color:'#6366F1', recurrence:{freq:'none'} };
+  showModal(`
+    <h2 class="text-lg font-semibold mb-4">${editingEvent?'Modifier':'Nouvel'} événement</h2>
+    <form onsubmit="saveEvent(event)" class="space-y-3">
+      <div><label class="text-sm font-medium block mb-1">Titre</label>
+        <input class="input" id="evTitle" required value="${editingEvent?escapeHtml(editingEvent.title):''}"></div>
+      <div><label class="text-sm font-medium block mb-1">Description (optionnel)</label>
+        <textarea class="input" id="evDescription" rows="2">${editingEvent?escapeHtml(editingEvent.description||''):''}</textarea></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-sm font-medium block mb-1">Date</label><input class="input" type="date" id="evDate" value="${d.date}"></div>
+        <div><label class="text-sm font-medium block mb-1">Catégorie</label>
+          <select class="input" id="evCategory">${state.agendaCategories.map(c=>`<option value="${c.id}" ${editingEvent?.agendaCategoryId===c.id?'selected':''}>${c.icon} ${c.name}</option>`).join('')}</select></div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-sm font-medium block mb-1">Heure de début</label><input class="input" type="time" id="evStart" value="${editingEvent?.startTime||''}"></div>
+        <div><label class="text-sm font-medium block mb-1">Heure de fin</label><input class="input" type="time" id="evEnd" value="${editingEvent?.endTime||''}"></div>
+      </div>
+      <div><label class="text-sm font-medium block mb-1">Localisation (optionnel)</label>
+        <input class="input" id="evLocation" value="${editingEvent?escapeHtml(editingEvent.location||''):''}"></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-sm font-medium block mb-1">Couleur</label><input class="input" type="color" id="evColor" value="${d.color}"></div>
+        <div><label class="text-sm font-medium block mb-1">Répétition</label>
+          <select class="input" id="evRecurrence">
+            <option value="none">Aucune</option>
+            <option value="daily">Tous les jours</option>
+            <option value="weekly">Toutes les semaines</option>
+            <option value="monthly">Tous les mois</option>
+            <option value="yearly">Tous les ans</option>
+          </select></div>
+      </div>
+      <button type="submit" class="btn btn-primary w-full">${editingEvent?'Enregistrer':'Ajouter'}</button>
+    </form>
+  `);
+  if(editingEvent?.recurrence?.freq) document.getElementById('evRecurrence').value = editingEvent.recurrence.freq;
+}
+function saveEvent(e){
+  e.preventDefault();
+  const ev = {
+    id: editingEvent ? editingEvent.id : uid(),
+    title: document.getElementById('evTitle').value,
+    description: document.getElementById('evDescription').value,
+    date: document.getElementById('evDate').value,
+    agendaCategoryId: document.getElementById('evCategory').value,
+    startTime: document.getElementById('evStart').value,
+    endTime: document.getElementById('evEnd').value,
+    location: document.getElementById('evLocation').value,
+    color: document.getElementById('evColor').value,
+    recurrence: { freq: document.getElementById('evRecurrence').value },
+  };
+  if(editingEvent){ const idx = state.events.findIndex(x=>x.id===editingEvent.id); state.events[idx]=ev; }
+  else state.events.push(ev);
+  saveData(); closeModal(); render(); toast(editingEvent?'Événement modifié':'Événement ajouté');
+}
+function deleteEvent(id){
+  if(!confirm('Supprimer cet événement ?')) return;
+  state.events = state.events.filter(e => e.id !== id);
+  saveData(); render(); toast('Événement supprimé');
+}
+
+/* ============================================================
+   TÂCHES
+   ============================================================ */
+function renderTasksSection(){
+  const priorityLabel = { urgent:'🔴 Urgent', important:'🟡 Important', normal:'🟢 Normal' };
+  const priorityColor = { urgent:'#EF4444', important:'#F59E0B', normal:'#10B981' };
+  const sorted = state.tasks.slice().sort((a,b) => (a.done - b.done) || (a.dueDate||'').localeCompare(b.dueDate||''));
+  return `
+    <div class="flex items-center justify-between mb-3">
+      <p class="text-sm font-semibold">Tâches</p>
+      <button class="btn btn-primary" onclick="openTaskModal()">+ Tâche</button>
+    </div>
+    ${sorted.length===0 ? `<div class="card p-10 text-center text-sm" style="color:var(--muted)">Aucune tâche pour l'instant.</div>` : `
+    <div class="card divide-y" style="border-color:var(--border)">
+      ${sorted.map(t => `
+        <div class="flex items-center justify-between px-4 py-3">
+          <div class="flex items-center gap-3">
+            <input type="checkbox" ${t.done?'checked':''} onchange="toggleTaskDone('${t.id}')" class="h-4 w-4">
+            <span class="priority-dot" style="background:${priorityColor[t.priority]}"></span>
+            <div>
+              <p class="text-sm font-medium ${t.done?'line-through opacity-50':''}">${escapeHtml(t.title)}</p>
+              <p class="text-xs" style="color:var(--muted)">${priorityLabel[t.priority]}${t.dueDate?(' · échéance '+t.dueDate):''}</p>
+            </div>
+          </div>
+          <button class="btn btn-outline !px-2 !py-1 text-xs" onclick="deleteTask('${t.id}')">🗑️</button>
+        </div>`).join('')}
+    </div>`}
+  `;
+}
+function openTaskModal(){
+  showModal(`
+    <h2 class="text-lg font-semibold mb-4">Nouvelle tâche</h2>
+    <form onsubmit="saveTask(event)" class="space-y-3">
+      <div><label class="text-sm font-medium block mb-1">Titre</label><input class="input" id="taskTitle" required></div>
+      <div><label class="text-sm font-medium block mb-1">Priorité</label>
+        <select class="input" id="taskPriority">
+          <option value="urgent">🔴 Urgent</option>
+          <option value="important">🟡 Important</option>
+          <option value="normal" selected>🟢 Normal</option>
+        </select></div>
+      <div><label class="text-sm font-medium block mb-1">Date limite (optionnel)</label><input class="input" type="date" id="taskDueDate"></div>
+      <div><label class="text-sm font-medium block mb-1">Rappel (jours avant)</label><input class="input" type="number" min="0" id="taskReminder" value="1"></div>
+      <button type="submit" class="btn btn-primary w-full">Créer</button>
+    </form>
+  `);
+}
+function saveTask(e){
+  e.preventDefault();
+  state.tasks.push({
+    id: uid(), title: document.getElementById('taskTitle').value,
+    priority: document.getElementById('taskPriority').value,
+    dueDate: document.getElementById('taskDueDate').value || null,
+    reminderDays: parseInt(document.getElementById('taskReminder').value) || 0,
+    done: false,
+  });
+  saveData(); closeModal(); render(); toast('Tâche créée');
+}
+function toggleTaskDone(id){ const t = state.tasks.find(x=>x.id===id); if(t){ t.done = !t.done; saveData(); render(); } }
+function deleteTask(id){
+  if(!confirm('Supprimer cette tâche ?')) return;
+  state.tasks = state.tasks.filter(t => t.id !== id);
+  saveData(); render(); toast('Tâche supprimée');
+}
+
+/* ============================================================
+   OBJECTIFS FINANCIERS
+   ============================================================ */
+function renderGoalsSection(){
+  return `
+    <div class="flex items-center justify-between mb-3">
+      <p class="text-sm font-semibold">Objectifs financiers</p>
+      <button class="btn btn-primary" onclick="openGoalModal()">+ Objectif</button>
+    </div>
+    ${state.goals.length===0 ? `<div class="card p-10 text-center text-sm" style="color:var(--muted)">Aucun objectif. Ex: Voiture 5000$, Vacances 2000$...</div>` : `
+    <div class="grid md:grid-cols-2 gap-4">
+      ${state.goals.map(g => {
+        const pct = g.targetAmount>0 ? Math.min(100, Math.round(g.currentAmount/g.targetAmount*100)) : 0;
+        return `
+        <div class="card p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-medium">🎯 ${escapeHtml(g.name)}</span>
+            <button class="btn btn-outline !px-2 !py-1 text-xs" onclick="deleteGoal('${g.id}')">🗑️</button>
+          </div>
+          <div class="flex items-baseline justify-between mb-1">
+            <span class="mono text-lg font-semibold">${money(g.currentAmount)}</span>
+            <span class="text-xs" style="color:var(--muted)">/ ${money(g.targetAmount)}</span>
+          </div>
+          <div class="progress-track"><div class="progress-bar" style="width:${pct}%;background:var(--primary)"></div></div>
+          <div class="flex items-center justify-between mt-2">
+            <span class="text-xs" style="color:var(--muted)">${g.deadline?('Échéance : '+g.deadline):'Sans échéance'}</span>
+            <button class="btn btn-outline text-xs" onclick="addGoalContribution('${g.id}')">+ Ajouter un montant</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`}
+  `;
+}
+function openGoalModal(){
+  showModal(`
+    <h2 class="text-lg font-semibold mb-4">Nouvel objectif</h2>
+    <form onsubmit="saveGoal(event)" class="space-y-3">
+      <div><label class="text-sm font-medium block mb-1">Nom</label><input class="input" id="goalName" required placeholder="Ex: Voiture"></div>
+      <div><label class="text-sm font-medium block mb-1">Montant cible</label><input class="input mono" type="number" step="0.01" id="goalTarget" required></div>
+      <div><label class="text-sm font-medium block mb-1">Montant déjà épargné</label><input class="input mono" type="number" step="0.01" id="goalCurrent" value="0"></div>
+      <div><label class="text-sm font-medium block mb-1">Date limite (optionnel)</label><input class="input" type="date" id="goalDeadline"></div>
+      <button type="submit" class="btn btn-primary w-full">Créer l'objectif</button>
+    </form>
+  `);
+}
+function saveGoal(e){
+  e.preventDefault();
+  state.goals.push({
+    id: uid(), name: document.getElementById('goalName').value,
+    targetAmount: parseFloat(document.getElementById('goalTarget').value),
+    currentAmount: parseFloat(document.getElementById('goalCurrent').value) || 0,
+    deadline: document.getElementById('goalDeadline').value || null,
+  });
+  saveData(); closeModal(); render(); toast('Objectif créé');
+}
+function addGoalContribution(id){
+  const amount = parseFloat(prompt('Montant à ajouter à cet objectif ($) :'));
+  if(!amount || amount <= 0) return;
+  const g = state.goals.find(x => x.id === id);
+  g.currentAmount += amount;
+  saveData(); render(); toast(`${money(amount)} ajoutés à "${g.name}"`);
+}
+function deleteGoal(id){
+  if(!confirm('Supprimer cet objectif ?')) return;
+  state.goals = state.goals.filter(g => g.id !== id);
+  saveData(); render(); toast('Objectif supprimé');
+}
+
+/* ============================================================
+   AJOUT RAPIDE (mobile)
+   ============================================================ */
+function openQuickAddMenu(){
+  showModal(`
+    <h2 class="text-lg font-semibold mb-4">Ajout rapide</h2>
+    <div class="space-y-2">
+      <button class="btn btn-outline w-full text-left" onclick="closeModal(); openTxModal();">↔️ Transaction</button>
+      <button class="btn btn-outline w-full text-left" onclick="closeModal(); openEventModal();">🗓️ Événement</button>
+      <button class="btn btn-outline w-full text-left" onclick="closeModal(); openTaskModal();">✅ Tâche</button>
+      <button class="btn btn-outline w-full text-left" onclick="closeModal(); openGoalModal();">🎯 Objectif</button>
+    </div>
+  `);
+}
+
+/* ============================================================
+   MODALES
+   ============================================================ */
+function showModal(html){
+  document.getElementById('modalRoot').innerHTML = `
+    <div class="fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" onclick="if(event.target===this) closeModal()">
+      <div class="card p-6 w-full max-w-md max-h-[90vh] overflow-y-auto fade-in" onclick="event.stopPropagation()">
+        ${html}
+      </div>
+    </div>`;
+}
+function closeModal(){ document.getElementById('modalRoot').innerHTML = ''; editingTx = null; editingBudget = null; editingEvent = null; }
+
+/* ============================================================
+   INITIALISATION
+   ============================================================ */
+applyTheme();
+render();
+</script>
+</body>
+</html>

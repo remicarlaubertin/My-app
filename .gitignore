@@ -1,0 +1,36 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+dist/
+*.bak
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+
+# Dossiers de plateforme générés automatiquement par scripts/bootstrap
+# (régénérés par `flutter create` en local et dans GitHub Actions)
+/android/
+/ios/
+/linux/
+/macos/
+/windows/
+/web/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.iws
+
+# Système
+.DS_Store
+Thumbs.db
+
+# Secrets — ne jamais commiter
+.env
+*.keystore
+*.jks
+key.properties
