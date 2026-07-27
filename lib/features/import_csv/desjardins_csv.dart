@@ -154,41 +154,93 @@ class DesjardinsCsv {
     // description ou le montant d'une transaction.
     final Set<int> constantColumns = _findConstantColumns(allCells);
 
-    final List<ParsedRow> parsed = <ParsedRow>[];
-    int duplicates = 0;
-
+    final List<_PendingRow> pending = <_PendingRow>[];
+    int index = 0;
     for (final List<String> cells in allCells) {
+      final int rowIndex = index++;
       final String? date = _findDate(cells);
       if (date == null) continue; // en-tête ou ligne de total
 
       final String description = _findDescription(cells, constantColumns);
-      final ({double amount, TxnType type})? money =
-          _findAmount(cells, description, constantColumns);
-      if (money == null || money.amount <= 0) continue;
+      final _RawMoney? raw = _findRawAmount(cells, constantColumns);
+      if (raw == null || raw.amount <= 0) continue;
 
-      final String key = _fingerprint(date, money.amount, money.type,
-          description);
+      pending.add(
+        _PendingRow(
+          date: date,
+          description: description,
+          fileOrder: rowIndex,
+          raw: raw,
+        ),
+      );
+    }
+
+    if (pending.isEmpty) {
+      return const ImportPreview.failure(
+        'Aucune transaction reconnue dans ce fichier. '
+        'Exporte tes opérations depuis AccèsD au format CSV.',
+      );
+    }
+
+    // Le sens (entrée/sortie) de chaque opération est déterminé en comparant
+    // le solde d'une ligne à celui de la précédente, dans l'ordre
+    // chronologique : un solde qui augmente est une entrée, un solde qui
+    // diminue est une sortie. Beaucoup plus fiable que de deviner à partir
+    // de mots-clés dans la description (« reçu de » vs « envoyé à », etc.).
+    // On trie par date puis par ordre d'apparition dans le fichier, en
+    // supposant que les lignes d'une même date y sont déjà dans l'ordre.
+    final List<_PendingRow> chronological = List<_PendingRow>.from(pending)
+      ..sort((_PendingRow a, _PendingRow b) {
+        final int byDate = a.date.compareTo(b.date);
+        if (byDate != 0) return byDate;
+        return a.fileOrder.compareTo(b.fileOrder);
+      });
+
+    final Map<_PendingRow, TxnType> types = <_PendingRow, TxnType>{};
+    double? previousBalance;
+    for (final _PendingRow row in chronological) {
+      final _RawMoney raw = row.raw;
+      TxnType type;
+      if (raw.isDeposit == true) {
+        type = TxnType.income;
+      } else if (raw.isDeposit == false) {
+        type = TxnType.expense;
+      } else if (raw.negative) {
+        type = TxnType.expense;
+      } else if (previousBalance != null &&
+          raw.balance != null &&
+          (raw.balance! - previousBalance).abs() >= 0.005) {
+        type = raw.balance! > previousBalance ? TxnType.income : TxnType.expense;
+      } else {
+        type = _looksLikeIncome(row.description)
+            ? TxnType.income
+            : TxnType.expense;
+      }
+      if (raw.balance != null) previousBalance = raw.balance;
+      types[row] = type;
+    }
+
+    final List<ParsedRow> parsed = <ParsedRow>[];
+    int duplicates = 0;
+
+    for (final _PendingRow row in pending) {
+      final TxnType type = types[row]!;
+      final String key =
+          _fingerprint(row.date, row.raw.amount, type, row.description);
       final bool duplicate = knownKeys.contains(key);
       if (duplicate) duplicates++;
 
       parsed.add(
         ParsedRow(
-          date: date,
-          description: description,
-          amount: money.amount,
-          type: money.type,
+          date: row.date,
+          description: row.description,
+          amount: row.raw.amount,
+          type: type,
           externalKey: key,
-          suggestedCategory: suggestCategory(description, money.type),
+          suggestedCategory: suggestCategory(row.description, type),
           duplicate: duplicate,
           selected: !duplicate,
         ),
-      );
-    }
-
-    if (parsed.isEmpty) {
-      return const ImportPreview.failure(
-        'Aucune transaction reconnue dans ce fichier. '
-        'Exporte tes opérations depuis AccèsD au format CSV.',
       );
     }
 
@@ -301,18 +353,13 @@ class DesjardinsCsv {
         '${day.toString().padLeft(2, '0')}';
   }
 
-  /// Détermine le montant et le sens de l'opération.
-  ///
-  /// Cas gérés :
-  ///  - deux colonnes « retrait » et « dépôt » (format Desjardins classique) ;
-  ///  - une colonne unique dont le signe donne le sens.
-  ///
-  /// Les identifiants numériques sans décimales (numéro de compte, numéro de
-  /// transaction) sont écartés au profit des valeurs monétaires réelles, qui
-  /// comportent toujours des centimes.
-  static ({double amount, TxnType type})? _findAmount(
+  /// Résultat brut de la lecture d'une ligne : le montant absolu, le solde
+  /// (s'il est identifiable), et des indices sur le sens de l'opération
+  /// quand le fichier le donne explicitement (deux colonnes retrait/dépôt,
+  /// ou une colonne signée). Le sens final est tranché ensuite, en dehors
+  /// de cette fonction, en comparant les soldes d'une ligne à l'autre.
+  static _RawMoney? _findRawAmount(
     List<String> cells,
-    String description,
     Set<int> excluded,
   ) {
     final List<int> numeric = <int>[];
@@ -337,6 +384,7 @@ class DesjardinsCsv {
     // sont le retrait puis le dépôt (l'une des deux étant vide ou nulle),
     // ou un montant unique s'il n'y en a qu'une.
     final int balanceIndex = candidates.last;
+    final double? balanceValue = _toNumber(cells[balanceIndex]);
     final List<int> before =
         candidates.where((int i) => i != balanceIndex).toList();
 
@@ -344,23 +392,33 @@ class DesjardinsCsv {
       final double? withdrawal = _toNumber(cells[before[before.length - 2]]);
       final double? deposit = _toNumber(cells[before[before.length - 1]]);
       if (withdrawal != null && withdrawal != 0) {
-        return (amount: withdrawal.abs(), type: TxnType.expense);
+        return _RawMoney(
+          amount: withdrawal.abs(),
+          balance: balanceValue,
+          isDeposit: false,
+          negative: withdrawal < 0,
+        );
       }
       if (deposit != null && deposit != 0) {
-        return (amount: deposit.abs(), type: TxnType.income);
+        return _RawMoney(
+          amount: deposit.abs(),
+          balance: balanceValue,
+          isDeposit: true,
+          negative: false,
+        );
       }
     }
 
-    // Colonne unique : le signe tranche, sinon on se fie à la description.
-    for (final int index in before) {
-      final double value = _toNumber(cells[index])!;
+    // Colonne unique : le signe (s'il est présent) donne le sens ; sinon
+    // il sera déterminé plus tard par comparaison des soldes.
+    for (final int i in before) {
+      final double value = _toNumber(cells[i])!;
       if (value == 0) continue;
-      if (value < 0) {
-        return (amount: value.abs(), type: TxnType.expense);
-      }
-      return (
-        amount: value,
-        type: _looksLikeIncome(description) ? TxnType.income : TxnType.expense,
+      return _RawMoney(
+        amount: value.abs(),
+        balance: balanceValue,
+        isDeposit: null,
+        negative: value < 0,
       );
     }
     return null;
@@ -385,7 +443,7 @@ class DesjardinsCsv {
     value = value
         .replaceAll(r'$', '')
         .replaceAll(' ', '')
-        .replaceAll(' ', '')
+        .replaceAll(' ', '')
         .replaceAll(',', '.');
     if (!RegExp(r'^-?\d+(\.\d+)?$').hasMatch(value)) return null;
     return double.tryParse(value);
@@ -417,4 +475,40 @@ class DesjardinsCsv {
         '${_normalize(description)}';
     return sha1.convert(utf8.encode(base)).toString().substring(0, 24);
   }
+}
+
+/// Ligne encore en attente de décision sur son sens (entrée/sortie), le
+/// temps de comparer les soldes de toutes les lignes du fichier.
+class _PendingRow {
+  _PendingRow({
+    required this.date,
+    required this.description,
+    required this.fileOrder,
+    required this.raw,
+  });
+
+  final String date;
+  final String description;
+  final int fileOrder;
+  final _RawMoney raw;
+}
+
+/// Montant et solde bruts extraits d'une ligne, avant de trancher son sens.
+class _RawMoney {
+  const _RawMoney({
+    required this.amount,
+    required this.balance,
+    required this.isDeposit,
+    required this.negative,
+  });
+
+  final double amount;
+  final double? balance;
+
+  /// true = colonne dépôt explicite, false = colonne retrait explicite,
+  /// null = colonne unique, sens encore inconnu.
+  final bool? isDeposit;
+
+  /// true si la valeur brute portait déjà un signe négatif.
+  final bool negative;
 }
