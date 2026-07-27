@@ -139,20 +139,31 @@ class DesjardinsCsv {
       return const ImportPreview.failure('Aucune ligne trouvée.');
     }
 
+    final List<List<String>> allCells = rows
+        .map(
+          (List<dynamic> raw) =>
+              raw.map((dynamic c) => c.toString().trim()).toList(),
+        )
+        .where((List<String> cells) => cells.any((String c) => c.isNotEmpty))
+        .toList();
+
+    // Certains exports Desjardins répètent sur chaque ligne des colonnes
+    // qui ne décrivent pas l'opération elle-même (nom de la caisse, numéro
+    // de compte, type de compte). Ces colonnes ont la même valeur partout :
+    // on les repère une fois pour ne jamais les confondre avec la
+    // description ou le montant d'une transaction.
+    final Set<int> constantColumns = _findConstantColumns(allCells);
+
     final List<ParsedRow> parsed = <ParsedRow>[];
     int duplicates = 0;
 
-    for (final List<dynamic> raw in rows) {
-      final List<String> cells =
-          raw.map((dynamic c) => c.toString().trim()).toList();
-      if (cells.every((String c) => c.isEmpty)) continue;
-
+    for (final List<String> cells in allCells) {
       final String? date = _findDate(cells);
       if (date == null) continue; // en-tête ou ligne de total
 
-      final String description = _findDescription(cells);
+      final String description = _findDescription(cells, constantColumns);
       final ({double amount, TxnType type})? money =
-          _findAmount(cells, description);
+          _findAmount(cells, description, constantColumns);
       if (money == null || money.amount <= 0) continue;
 
       final String key = _fingerprint(date, money.amount, money.type,
@@ -200,6 +211,37 @@ class DesjardinsCsv {
   }
 
   // ---------------------------------------------------------------------------
+
+  /// Repère les colonnes dont la valeur ne change jamais d'une ligne à
+  /// l'autre (nom de la caisse, numéro de compte, type de compte...).
+  /// Nécessite au moins 3 lignes de données pour éviter les faux positifs
+  /// sur de petits fichiers.
+  static Set<int> _findConstantColumns(List<List<String>> allCells) {
+    if (allCells.length < 3) return const <int>{};
+
+    final int width =
+        allCells.map((List<String> c) => c.length).reduce((a, b) => a > b ? a : b);
+    final Set<int> constant = <int>{};
+
+    for (int col = 0; col < width; col++) {
+      String? seen;
+      bool isConstant = true;
+      int nonEmptyCount = 0;
+      for (final List<String> cells in allCells) {
+        if (col >= cells.length) continue;
+        final String value = cells[col];
+        if (value.isEmpty) continue;
+        nonEmptyCount++;
+        seen ??= value;
+        if (value != seen) {
+          isConstant = false;
+          break;
+        }
+      }
+      if (isConstant && nonEmptyCount >= 3) constant.add(col);
+    }
+    return constant;
+  }
 
   static String _detectDelimiter(String content) {
     final String firstLine = content.split('\n').first;
@@ -265,39 +307,52 @@ class DesjardinsCsv {
   ///  - deux colonnes « retrait » et « dépôt » (format Desjardins classique) ;
   ///  - une colonne unique dont le signe donne le sens.
   ///
-  /// La dernière colonne numérique est ignorée quand elle représente le solde
-  /// (c'est-à-dire lorsqu'au moins trois nombres sont présents).
+  /// Les identifiants numériques sans décimales (numéro de compte, numéro de
+  /// transaction) sont écartés au profit des valeurs monétaires réelles, qui
+  /// comportent toujours des centimes.
   static ({double amount, TxnType type})? _findAmount(
     List<String> cells,
     String description,
+    Set<int> excluded,
   ) {
     final List<int> numeric = <int>[];
     for (int i = 0; i < cells.length; i++) {
+      if (excluded.contains(i)) continue;
       if (RegExp(r'^\d{4}[-/]\d{1,2}').hasMatch(cells[i])) continue;
       if (_toNumber(cells[i]) == null) continue;
       numeric.add(i);
     }
     if (numeric.isEmpty) return null;
 
+    // Un numéro de compte ou de transaction est un entier sans centimes ;
+    // un vrai montant s'écrit toujours avec une décimale. Quand au moins
+    // deux valeurs décimales existent, on les préfère aux entiers bruts
+    // pour éviter de confondre un identifiant avec un montant.
+    final List<int> money =
+        numeric.where((int i) => _hasDecimals(cells[i])).toList();
+    final List<int> candidates = money.length >= 2 ? money : numeric;
+
     // Format Desjardins classique : … | retrait | dépôt | solde
-    // La dernière colonne numérique est le solde ; les deux colonnes qui la
-    // précèdent portent le retrait puis le dépôt, l'une des deux étant vide.
-    if (numeric.length >= 2) {
-      final int balanceIndex = numeric.last;
-      if (balanceIndex >= 2) {
-        final double? withdrawal = _toNumber(cells[balanceIndex - 2]);
-        final double? deposit = _toNumber(cells[balanceIndex - 1]);
-        if (withdrawal != null && withdrawal != 0) {
-          return (amount: withdrawal.abs(), type: TxnType.expense);
-        }
-        if (deposit != null && deposit != 0) {
-          return (amount: deposit.abs(), type: TxnType.income);
-        }
+    // La dernière valeur retenue est le solde ; celles qui restent avant
+    // sont le retrait puis le dépôt (l'une des deux étant vide ou nulle),
+    // ou un montant unique s'il n'y en a qu'une.
+    final int balanceIndex = candidates.last;
+    final List<int> before =
+        candidates.where((int i) => i != balanceIndex).toList();
+
+    if (before.length >= 2) {
+      final double? withdrawal = _toNumber(cells[before[before.length - 2]]);
+      final double? deposit = _toNumber(cells[before[before.length - 1]]);
+      if (withdrawal != null && withdrawal != 0) {
+        return (amount: withdrawal.abs(), type: TxnType.expense);
+      }
+      if (deposit != null && deposit != 0) {
+        return (amount: deposit.abs(), type: TxnType.income);
       }
     }
 
     // Colonne unique : le signe tranche, sinon on se fie à la description.
-    for (final int index in numeric) {
+    for (final int index in before) {
       final double value = _toNumber(cells[index])!;
       if (value == 0) continue;
       if (value < 0) {
@@ -309,6 +364,11 @@ class DesjardinsCsv {
       );
     }
     return null;
+  }
+
+  static bool _hasDecimals(String raw) {
+    final String value = raw.trim();
+    return value.contains('.') || value.contains(',');
   }
 
   static bool _looksLikeIncome(String description) {
@@ -325,15 +385,17 @@ class DesjardinsCsv {
     value = value
         .replaceAll(r'$', '')
         .replaceAll(' ', '')
-        .replaceAll(' ', '')
+        .replaceAll(' ', '')
         .replaceAll(',', '.');
     if (!RegExp(r'^-?\d+(\.\d+)?$').hasMatch(value)) return null;
     return double.tryParse(value);
   }
 
-  static String _findDescription(List<String> cells) {
+  static String _findDescription(List<String> cells, Set<int> excluded) {
     String best = '';
-    for (final String cell in cells) {
+    for (int i = 0; i < cells.length; i++) {
+      if (excluded.contains(i)) continue;
+      final String cell = cells[i];
       if (_toNumber(cell) != null) continue;
       // Dates et numéros de compte (chiffres, tirets, espaces) : pas des
       // descriptions.
