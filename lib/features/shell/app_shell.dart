@@ -182,6 +182,21 @@ class _AppShellState extends ConsumerState<AppShell> {
                         ),
                       ),
                       IconButton(
+                        tooltip: ref.watch(appProvider).data.settings.hideAmounts
+                            ? 'Afficher les montants'
+                            : 'Masquer les montants',
+                        icon: Icon(
+                          ref.watch(appProvider).data.settings.hideAmounts
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                          size: 18,
+                        ),
+                        onPressed: () {
+                          final AppNotifier n = ref.read(appProvider.notifier);
+                          n.setHideAmounts(!n.data.settings.hideAmounts);
+                        },
+                      ),
+                      IconButton(
                         tooltip: 'Changer de thème',
                         icon: Icon(
                           context.isDark
