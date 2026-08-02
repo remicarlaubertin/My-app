@@ -171,6 +171,43 @@ class InvestmentsScreen extends ConsumerWidget {
                             color: Theme.of(context).colorScheme.primary,
                           ),
                         ),
+                        IconButton(
+                          tooltip: 'Annuler ce transfert',
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          onPressed: () async {
+                            final bool? confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (BuildContext context) => AlertDialog(
+                                title: const Text('Annuler ce transfert ?'),
+                                content: Text(
+                                  'Le transfert de ${Fmt.money(t.invested)} '
+                                  'pour ${t.month} sera annulé et le montant '
+                                  'retiré du compte Investissements.',
+                                ),
+                                actions: <Widget>[
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(false),
+                                    child: const Text('Annuler'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(true),
+                                    child: const Text('Supprimer'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirm == true) {
+                              await ref
+                                  .read(appProvider.notifier)
+                                  .deleteInvestmentTransfer(t.id);
+                              if (context.mounted) {
+                                showSnack(context, 'Transfert annulé.');
+                              }
+                            }
+                          },
+                        ),
                       ],
                     ),
                   ),
