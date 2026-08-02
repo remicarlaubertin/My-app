@@ -10,6 +10,7 @@ class AppSettings {
     this.notificationsEnabled = true,
     this.lowBalanceThreshold = 100,
     this.pinEnabled = false,
+    this.hideAmounts = false,
     this.lastAutoTransferMonth,
     this.lastSyncAt,
   });
@@ -27,6 +28,9 @@ class AppSettings {
 
   final bool pinEnabled;
 
+  /// Masque tous les montants affichés (mode confidentialité).
+  final bool hideAmounts;
+
   /// Dernier mois (`yyyy-MM`) pour lequel le transfert automatique a été fait.
   final String? lastAutoTransferMonth;
 
@@ -40,6 +44,7 @@ class AppSettings {
         lowBalanceThreshold:
             asDouble(m['low_balance_threshold'], fallback: 100),
         pinEnabled: asBool(m['pin_enabled']),
+        hideAmounts: asBool(m['hide_amounts']),
         lastAutoTransferMonth: m['last_auto_transfer_month'] == null
             ? null
             : asString(m['last_auto_transfer_month']),
@@ -54,6 +59,7 @@ class AppSettings {
         'notifications_enabled': notificationsEnabled,
         'low_balance_threshold': lowBalanceThreshold,
         'pin_enabled': pinEnabled,
+        'hide_amounts': hideAmounts,
         'last_auto_transfer_month': lastAutoTransferMonth,
         'last_sync_at': lastSyncAt?.toUtc().toIso8601String(),
       };
@@ -65,6 +71,7 @@ class AppSettings {
     bool? notificationsEnabled,
     double? lowBalanceThreshold,
     bool? pinEnabled,
+    bool? hideAmounts,
     String? lastAutoTransferMonth,
     DateTime? lastSyncAt,
   }) =>
@@ -76,6 +83,7 @@ class AppSettings {
             notificationsEnabled ?? this.notificationsEnabled,
         lowBalanceThreshold: lowBalanceThreshold ?? this.lowBalanceThreshold,
         pinEnabled: pinEnabled ?? this.pinEnabled,
+        hideAmounts: hideAmounts ?? this.hideAmounts,
         lastAutoTransferMonth:
             lastAutoTransferMonth ?? this.lastAutoTransferMonth,
         lastSyncAt: lastSyncAt ?? this.lastSyncAt,
