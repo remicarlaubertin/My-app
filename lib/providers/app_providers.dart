@@ -310,6 +310,9 @@ class AppNotifier extends StateNotifier<AppState> {
   // Investissements
   // ---------------------------------------------------------------------------
 
+  Future<void> setHideAmounts(bool hidden) =>
+      updateSettings(state.data.settings.copyWith(hideAmounts: hidden));
+
   Future<void> setInvestmentEnabled(bool enabled) =>
       updateSettings(state.data.settings.copyWith(investmentEnabled: enabled));
 
@@ -364,6 +367,14 @@ class AppNotifier extends StateNotifier<AppState> {
     return invested > 0
         ? 'Transfert effectué vers le compte Investissements.'
         : 'Aucun montant à transférer pour ce mois.';
+  }
+
+  /// Annule un transfert vers les investissements (ex. montant erroné).
+  /// Le solde des deux comptes est automatiquement recalculé, puisqu'il
+  /// dépend de la somme des transferts encore présents.
+  Future<void> deleteInvestmentTransfer(String id) async {
+    await _repo.remove(Tables.investmentTransfers, id);
+    await reload();
   }
 
   /// Au démarrage : si on a changé de mois et que la règle est active,
