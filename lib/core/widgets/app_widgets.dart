@@ -1,7 +1,9 @@
 import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../providers/app_providers.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 
@@ -39,7 +41,7 @@ class AppCard extends StatelessWidget {
 }
 
 /// Tuile de statistique du tableau de bord.
-class StatCard extends StatelessWidget {
+class StatCard extends ConsumerWidget {
   const StatCard({
     super.key,
     required this.label,
@@ -54,7 +56,10 @@ class StatCard extends StatelessWidget {
   final IconData? icon;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bool hidden = ref.watch(
+      dataProvider.select((BudgetData d) => d.settings.hideAmounts),
+    );
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -80,7 +85,7 @@ class StatCard extends StatelessWidget {
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(
-              Fmt.money(value),
+              hidden ? '••••••' : Fmt.money(value),
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
