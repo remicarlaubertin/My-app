@@ -53,6 +53,28 @@ class SyncService {
   bool get available =>
       AppConfig.cloudEnabled && _client.auth.currentUser != null;
 
+  /// Remet à zéro le curseur de synchronisation (date du dernier sync) :
+  /// le prochain appel à [synchronize] re-comparera donc TOUTES les lignes
+  /// du cloud, pas seulement celles modifiées depuis la dernière fois.
+  /// Utile en dépannage si un appareil semble « bloqué » et ne reçoit plus
+  /// les changements des autres appareils.
+  Future<void> resetSyncCursor() async {
+    final AppSettings current = await _store.readSettings();
+    await _store.writeSettings(
+      AppSettings(
+        darkMode: current.darkMode,
+        investmentEnabled: current.investmentEnabled,
+        investmentPercent: current.investmentPercent,
+        notificationsEnabled: current.notificationsEnabled,
+        lowBalanceThreshold: current.lowBalanceThreshold,
+        pinEnabled: current.pinEnabled,
+        hideAmounts: current.hideAmounts,
+        lastAutoTransferMonth: current.lastAutoTransferMonth,
+        lastSyncAt: null,
+      ),
+    );
+  }
+
   Future<SyncResult> synchronize() async {
     if (!AppConfig.cloudConfigured) {
       return const SyncResult.failure(
