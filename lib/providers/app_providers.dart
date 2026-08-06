@@ -443,6 +443,12 @@ class AppNotifier extends StateNotifier<AppState> {
     await NotificationService.refresh(state.data);
   }
 
+  /// Dépannage : oublie la date de dernière synchro et retélécharge tout.
+  Future<void> forceFullResync() async {
+    await _sync.resetSyncCursor();
+    await synchronize();
+  }
+
   Future<void> synchronize({bool silent = false}) async {
     if (state.syncing) return;
     state = state.copyWith(syncing: true);
