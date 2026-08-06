@@ -120,6 +120,28 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: app.syncing
+                      ? null
+                      : () async {
+                          await ref
+                              .read(appProvider.notifier)
+                              .forceFullResync();
+                          if (context.mounted) {
+                            showSnack(
+                              context,
+                              'Resynchronisation complète effectuée.',
+                            );
+                          }
+                        },
+                  child: const Text(
+                    'Problème de synchro ? Resynchroniser tout',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -160,6 +182,19 @@ class ProfileScreen extends ConsumerWidget {
                     settings.copyWith(pinEnabled: value),
                   );
                 },
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: settings.hideAmounts,
+                title: const Text('Masquer les montants'),
+                subtitle: Text(
+                  'Remplace tous les chiffres par des points, '
+                  'pratique en public.',
+                  style: TextStyle(fontSize: 12, color: context.mutedColor),
+                ),
+                onChanged: (bool value) => ref
+                    .read(appProvider.notifier)
+                    .setHideAmounts(value),
               ),
               Text(
                 'Aucune information bancaire n\'est enregistrée : '
@@ -204,11 +239,15 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                   title: Text(account.name),
                   subtitle: Text(
-                    'Solde d\'ouverture : ${Fmt.money(account.balance)}',
+                    settings.hideAmounts
+                        ? 'Solde d\'ouverture : ••••••'
+                        : 'Solde d\'ouverture : ${Fmt.money(account.balance)}',
                     style: TextStyle(fontSize: 12, color: context.mutedColor),
                   ),
                   trailing: Text(
-                    Fmt.money(data.balanceOf(account)),
+                    settings.hideAmounts
+                        ? '••••••'
+                        : Fmt.money(data.balanceOf(account)),
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   onTap: () =>
