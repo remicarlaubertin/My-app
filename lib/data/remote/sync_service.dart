@@ -30,10 +30,12 @@ class SyncResult {
 /// Stratégie : « dernier écrivain gagne » (comparaison de `updated_at`).
 /// Les suppressions sont logiques (`deleted = true`) afin de se propager.
 ///
-/// Envoi  : toutes les lignes marquées `dirty = 1` localement.
-/// Récupération : toutes les lignes du cloud modifiées depuis la dernière
-/// synchronisation ; une ligne n'écrase la version locale que si elle est
-/// plus récente.
+/// Envoi : toutes les lignes marquées `dirty = 1` localement.
+/// Récupération : TOUTES les lignes du cloud (le jeu de données d'une app
+/// de budget personnel reste petit), comparées une à une à la version
+/// locale — seule la plus récente est conservée. On évite ainsi tout bug de
+/// « curseur » (`since`) qui pouvait faire manquer des lignes modifiées hors
+/// ligne puis synchronisées en retard sur un autre appareil.
 class SyncService {
   const SyncService(this._store);
 
@@ -53,27 +55,11 @@ class SyncService {
   bool get available =>
       AppConfig.cloudEnabled && _client.auth.currentUser != null;
 
-  /// Remet à zéro le curseur de synchronisation (date du dernier sync) :
-  /// le prochain appel à [synchronize] re-comparera donc TOUTES les lignes
-  /// du cloud, pas seulement celles modifiées depuis la dernière fois.
-  /// Utile en dépannage si un appareil semble « bloqué » et ne reçoit plus
-  /// les changements des autres appareils.
-  Future<void> resetSyncCursor() async {
-    final AppSettings current = await _store.readSettings();
-    await _store.writeSettings(
-      AppSettings(
-        darkMode: current.darkMode,
-        investmentEnabled: current.investmentEnabled,
-        investmentPercent: current.investmentPercent,
-        notificationsEnabled: current.notificationsEnabled,
-        lowBalanceThreshold: current.lowBalanceThreshold,
-        pinEnabled: current.pinEnabled,
-        hideAmounts: current.hideAmounts,
-        lastAutoTransferMonth: current.lastAutoTransferMonth,
-        lastSyncAt: null,
-      ),
-    );
-  }
+  /// Conservée pour compatibilité avec le bouton « Resynchroniser tout » :
+  /// ne fait plus rien de spécial puisque chaque synchro est déjà complète,
+  /// mais garde l'appel existant fonctionnel sans avoir à toucher au reste
+  /// de l'application.
+  Future<void> resetSyncCursor() async {}
 
   Future<SyncResult> synchronize() async {
     if (!AppConfig.cloudConfigured) {
@@ -94,8 +80,6 @@ class SyncService {
     }
 
     final AppSettings settings = await _store.readSettings();
-    final DateTime since =
-        settings.lastSyncAt ?? DateTime.utc(2000);
     final DateTime startedAt = DateTime.now().toUtc();
 
     int pushed = 0;
@@ -104,7 +88,7 @@ class SyncService {
     try {
       for (final String table in Tables.synced) {
         pushed += await _push(table, user.id);
-        pulled += await _pull(table, since);
+        pulled += await _pull(table);
       }
       await _syncSettings(user.id, settings, startedAt);
       return SyncResult(pushed: pushed, pulled: pulled);
@@ -138,13 +122,12 @@ class SyncService {
     return payload.length;
   }
 
-  Future<int> _pull(String table, DateTime since) async {
+  /// Récupère TOUTES les lignes du cloud pour cette table (plus de filtre
+  /// par date) et n'applique que celles plus récentes que la version locale.
+  Future<int> _pull(String table) async {
     final List<Map<String, dynamic>> remote =
         List<Map<String, dynamic>>.from(
-      await _client
-          .from(table)
-          .select()
-          .gt('updated_at', since.toIso8601String()) as List<dynamic>,
+      await _client.from(table).select() as List<dynamic>,
     );
     if (remote.isEmpty) return 0;
 
@@ -160,7 +143,8 @@ class SyncService {
       final DateTime? localUpdated =
           DateTime.tryParse(localIndex[id] ?? '')?.toUtc();
 
-      // Conflit : on garde la version la plus récente.
+      // Conflit : on garde la version la plus récente. Si la ligne n'existe
+      // pas encore localement (localUpdated == null), on l'applique toujours.
       if (remoteUpdated != null &&
           localUpdated != null &&
           !remoteUpdated.isAfter(localUpdated)) {
@@ -184,6 +168,8 @@ class SyncService {
       ..['updated_at'] = startedAt.toIso8601String();
 
     await _client.from('user_settings').upsert(payload);
+    // lastSyncAt n'est plus utilisé pour filtrer la synchronisation : il ne
+    // sert plus qu'à l'affichage (« Dernière synchro : ... ») dans le profil.
     await _store.writeSettings(settings.copyWith(lastSyncAt: startedAt));
   }
 
