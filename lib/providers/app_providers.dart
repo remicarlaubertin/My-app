@@ -443,7 +443,10 @@ class AppNotifier extends StateNotifier<AppState> {
     await NotificationService.refresh(state.data);
   }
 
-  /// Dépannage : oublie la date de dernière synchro et retélécharge tout.
+  /// Dépannage : relance une synchronisation complète (chaque synchro est
+  /// déjà complète depuis le correctif de sync_service.dart, cette méthode
+  /// est conservée pour que le bouton "Resynchroniser tout" continue de
+  /// fonctionner sans modification ailleurs).
   Future<void> forceFullResync() async {
     await _sync.resetSyncCursor();
     await synchronize();
@@ -467,10 +470,59 @@ class AppNotifier extends StateNotifier<AppState> {
   }
 
   /// Efface les données locales (déconnexion) et repart d'une base neuve.
+  /// N'efface RIEN dans le cloud : à la prochaine connexion + synchro, les
+  /// données reviennent. C'est le comportement voulu pour "Se déconnecter".
   Future<void> resetLocalData() async {
     await AppDatabase.wipe();
     await _repo.ensureSeeded();
     await reload();
+  }
+
+  /// Vraie réinitialisation : supprime chaque ligne via la même mécanique
+  /// que les suppressions individuelles (marquage deleted+dirty côté
+  /// SQLite), donc la suppression se propage correctement au cloud au
+  /// prochain envoi — contrairement à [resetLocalData] qui ne fait que
+  /// vider le cache local et se fait donc écraser par la synchronisation
+  /// suivante.
+  Future<void> eraseAllData() async {
+    final BudgetData d = state.data;
+
+    for (final Txn t in d.transactions) {
+      await _repo.remove(Tables.transactions, t.id);
+    }
+    for (final Bill b in d.bills) {
+      await _repo.remove(Tables.bills, b.id);
+    }
+    for (final Budget b in d.budgets) {
+      await _repo.remove(Tables.budgets, b.id);
+    }
+    for (final InvestmentTransfer t in d.transfers) {
+      await _repo.remove(Tables.investmentTransfers, t.id);
+    }
+    for (final AgendaEvent e in d.events) {
+      await _repo.remove(Tables.events, e.id);
+    }
+    for (final AgendaTask t in d.tasks) {
+      await _repo.remove(Tables.tasks, t.id);
+    }
+    for (final Goal g in d.goals) {
+      await _repo.remove(Tables.goals, g.id);
+    }
+    for (final Account a in d.accounts) {
+      await _repo.remove(Tables.accounts, a.id);
+    }
+    for (final Category c in d.categories) {
+      if (!c.isSystem) await _repo.remove(Tables.categories, c.id);
+    }
+
+    await reload();
+
+    // Pousse les suppressions vers le cloud tout de suite : sans cette
+    // étape, une synchro lancée depuis l'autre appareil avant que celui-ci
+    // ne synchronise ferait "revenir" les données supprimées.
+    if (_sync.available) {
+      await synchronize();
+    }
   }
 }
 
