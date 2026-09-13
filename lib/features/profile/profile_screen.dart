@@ -339,15 +339,22 @@ class ProfileScreen extends ConsumerWidget {
                     onPressed: () async {
                       final bool ok = await confirmDialog(
                         context,
-                        title: 'Réinitialiser les données locales',
+                        title: 'Tout réinitialiser',
                         message:
-                            'Toutes les données de cet appareil seront '
-                            'effacées. Si tu es connecté, elles reviendront '
-                            'à la prochaine synchronisation.',
-                        confirmLabel: 'Réinitialiser',
+                            'Toutes tes données seront supprimées '
+                            'définitivement, sur cet appareil ET dans le '
+                            'cloud (tous tes appareils synchronisés). '
+                            'Cette action est irréversible.',
+                        confirmLabel: 'Tout supprimer',
                       );
                       if (ok) {
-                        await ref.read(appProvider.notifier).resetLocalData();
+                        await ref.read(appProvider.notifier).eraseAllData();
+                        if (context.mounted) {
+                          showSnack(
+                            context,
+                            'Toutes les données ont été supprimées.',
+                          );
+                        }
                       }
                     },
                     icon: const Icon(Icons.restart_alt, size: 16),
